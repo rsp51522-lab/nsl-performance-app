@@ -4,7 +4,12 @@ import seed from "../../seed-data.json";
 type Row = (string | number)[];
 type CaseRecord = Record<string, string | number>;
 
-const caseHeaders = seed.cases.headers as string[];
+const caseHeaders = [
+  ...(seed.cases.headers as string[]),
+  "営業報酬率",
+  "開発報酬率",
+  "サブ報酬率",
+];
 const seedRows = seed.cases.rows as Row[];
 
 function rowToRecord(row: Row): CaseRecord {

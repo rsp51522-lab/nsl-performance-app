@@ -12,7 +12,8 @@ type ProcessRecord = Record<string, string | number | boolean | string[]>;
 type ProcessItem = ProcessRecord & { id?: number };
 
 const data = seed as AppData;
-const caseHeaders = data.cases.headers;
+const rewardRateHeaders = ["営業報酬率", "開発報酬率", "サブ報酬率"];
+const caseHeaders = [...data.cases.headers, ...rewardRateHeaders];
 const sheetUrl =
   "https://docs.google.com/spreadsheets/d/1mzCoalbNbLwe8lkKmyuGBMp1NcFvJvs-ix_9_QkCaWI/edit";
 const defaultSteps = [
@@ -25,6 +26,7 @@ const defaultSteps = [
   "作業内容進捗報告",
 ];
 const staffOptions = ["", "浅野", "鹿島", "川西"];
+const rateHeaders = new Set(rewardRateHeaders);
 const moneyHeaders = new Set([
   "税抜単価",
   "税抜金額",
@@ -58,6 +60,9 @@ const initialForm: CaseRecord = {
   アポ金額: "",
   申込金額: "",
   入金金額: "",
+  営業報酬率: 30,
+  開発報酬率: 70,
+  サブ報酬率: 35,
 };
 
 function asObjects(sheet: SheetData) {
@@ -90,18 +95,58 @@ function calcDays(hours: string | number | boolean | string[]) {
   return value ? Math.ceil(value / 8) : "";
 }
 
+function defaultRewardRate(row: CaseRecord, role: "sales" | "developer" | "sub", name: string) {
+  if (role === "sales") return name === "浅野" ? 0.3 : 1;
+  if (role === "developer") {
+    if (name === "鹿島") return row["サブ"] ? 0.35 : 0.7;
+    if (name === "川西") return 0.35;
+    return 0;
+  }
+  return 0.35;
+}
+
+function rewardRate(
+  row: CaseRecord,
+  key: "営業報酬率" | "開発報酬率" | "サブ報酬率",
+  fallback: number,
+) {
+  const raw = row[key];
+  if (raw === "" || raw === undefined || raw === null) return fallback;
+  const value = Number(String(raw).replace("%", ""));
+  return Number.isFinite(value) ? value / 100 : fallback;
+}
+
 function staffApplicationReward(row: CaseRecord, name: string) {
   const amount = Number(row["税抜金額"]) || 0;
   let reward = 0;
 
-  if (row["営業"] === name) reward += amount * (name === "浅野" ? 0.3 : 1);
-  if (row["開発"] === name) {
-    if (name === "鹿島") reward += amount * (row["サブ"] ? 0.35 : 0.7);
-    if (name === "川西") reward += amount * 0.35;
+  if (row["営業"] === name) {
+    reward += amount * rewardRate(row, "営業報酬率", defaultRewardRate(row, "sales", name));
   }
-  if (row["サブ"] === name) reward += amount * 0.35;
+  if (row["開発"] === name) {
+    reward += amount * rewardRate(row, "開発報酬率", defaultRewardRate(row, "developer", name));
+  }
+  if (row["サブ"] === name) {
+    reward += amount * rewardRate(row, "サブ報酬率", defaultRewardRate(row, "sub", name));
+  }
 
   return Math.round(reward);
+}
+
+function displayRate(value: string | number) {
+  return value === "" || value === undefined || value === null ? "" : `${value}%`;
+}
+
+function rateValueFor(
+  row: CaseRecord,
+  key: "営業報酬率" | "開発報酬率" | "サブ報酬率",
+  role: "sales" | "developer" | "sub",
+  person: string,
+) {
+  if (!person) return "";
+  const raw = row[key];
+  if (raw !== "" && raw !== undefined && raw !== null) return raw;
+  return Math.round(defaultRewardRate(row, role, person) * 100);
 }
 
 function statusFor(item: ProcessRecord) {
@@ -287,20 +332,19 @@ export default function Home() {
       let sub = 0;
 
       for (const row of cases) {
-        const amount = Number(row["税抜金額"]) || 0;
         const paid = Number(row["入金金額"]) || 0;
         const isSales = row["営業"] === name;
         const isDeveloper = row["開発"] === name;
         const isSub = row["サブ"] === name;
-        const devRate =
-          name === "鹿島" && isDeveloper
-            ? row["サブ"]
-              ? 0.35
-              : 0.7
-            : name === "川西" && isDeveloper
-              ? 0.35
-              : 0;
-        const subRate = isSub ? 0.35 : 0;
+        const salesRate = isSales
+          ? rewardRate(row, "営業報酬率", defaultRewardRate(row, "sales", name))
+          : 0;
+        const devRate = isDeveloper
+          ? rewardRate(row, "開発報酬率", defaultRewardRate(row, "developer", name))
+          : 0;
+        const subRate = isSub
+          ? rewardRate(row, "サブ報酬率", defaultRewardRate(row, "sub", name))
+          : 0;
 
         if (isSales || isDeveloper || isSub) {
           if (row["申込状況"] === "済") appCount += 1;
@@ -309,7 +353,7 @@ export default function Home() {
 
         if (isSales) {
           app += staffApplicationReward(row, name);
-          pay += paid;
+          pay += paid * salesRate;
         }
         if (isDeveloper) {
           if (!isSales) app += staffApplicationReward(row, name);
@@ -349,6 +393,9 @@ export default function Home() {
         row["営業"] || "",
         row["開発"] || "",
         row["サブ"] || "",
+        displayRate(rateValueFor(row, "営業報酬率", "sales", String(row["営業"] || ""))),
+        displayRate(rateValueFor(row, "開発報酬率", "developer", String(row["開発"] || ""))),
+        displayRate(rateValueFor(row, "サブ報酬率", "sub", String(row["サブ"] || ""))),
         staffApplicationReward(row, "浅野"),
         staffApplicationReward(row, "鹿島"),
         staffApplicationReward(row, "川西"),
@@ -363,9 +410,12 @@ export default function Home() {
         "",
         "",
         "",
-        rows.reduce((sum, row) => sum + Number(row[6] || 0), 0),
-        rows.reduce((sum, row) => sum + Number(row[7] || 0), 0),
-        rows.reduce((sum, row) => sum + Number(row[8] || 0), 0),
+        "",
+        "",
+        "",
+        rows.reduce((sum, row) => sum + Number(row[9] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[10] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[11] || 0), 0),
       ],
     ];
   }, [cases]);
@@ -605,7 +655,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 15:20 報酬合計行追加</p>
+          <p className="version-note">最新版: 2026/08/14 15:45 案件別報酬率対応</p>
         </div>
         <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
           保存先を開く
@@ -705,6 +755,9 @@ export default function Home() {
                 <SelectField label="営業" onChange={updateForm} options={["浅野", "鹿島", "川西", ""]} value={form["営業"]} />
                 <SelectField label="開発" onChange={updateForm} options={["鹿島", "川西", "浅野", ""]} value={form["開発"]} />
                 <SelectField label="サブ" onChange={updateForm} options={["", "鹿島", "川西", "浅野"]} value={form["サブ"]} />
+                <Field label="営業報酬率" onChange={updateForm} type="number" value={form["営業報酬率"]} />
+                <Field label="開発報酬率" onChange={updateForm} type="number" value={form["開発報酬率"]} />
+                <Field label="サブ報酬率" onChange={updateForm} type="number" value={form["サブ報酬率"]} />
                 <SelectField label="申込状況" onChange={updateForm} options={["", "済"]} value={form["申込状況"]} />
                 <SelectField label="入金状況" onChange={updateForm} options={["", "済"]} value={form["入金状況"]} />
                 <Field label="サービス" onChange={updateForm} value={form["サービス"]} />
@@ -760,6 +813,18 @@ export default function Home() {
                                 </option>
                               ))}
                             </select>
+                          ) : rateHeaders.has(header) ? (
+                            <input
+                              className="cell-input rate-input"
+                              inputMode="numeric"
+                              min="0"
+                              onChange={(event) =>
+                                void saveCaseAssignment(row, header, event.target.value)
+                              }
+                              step="1"
+                              type="number"
+                              value={String(row[header] ?? "")}
+                            />
                           ) : moneyHeaders.has(header) ? (
                             yen(row[header] ?? "")
                           ) : (
@@ -906,6 +971,9 @@ export default function Home() {
                   "営業",
                   "開発",
                   "サブ",
+                  "営業報酬率",
+                  "開発報酬率",
+                  "サブ報酬率",
                   "浅野報酬",
                   "鹿島報酬",
                   "川西報酬",
