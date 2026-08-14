@@ -16,8 +16,9 @@ export const metadata: Metadata = {
   title: "NSL実績管理アプリ",
   description: "NSLの案件、売上、担当者別実績、会社別工程を確認できる管理画面です。",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/apple-touch-icon.png",
   },
 };
 
