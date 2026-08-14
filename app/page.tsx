@@ -384,8 +384,12 @@ export default function Home() {
     setProcessMessage("PDFを読み込んでいます。");
     try {
       const pdfjs: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+        "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+        import.meta.url,
+      ).toString();
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const pdf = await pdfjs.getDocument({ data: bytes, disableWorker: true }).promise;
+      const pdf = await pdfjs.getDocument({ data: bytes }).promise;
       const pages: string[] = [];
 
       for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
@@ -526,7 +530,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 12:15 案件追加ボタン対応</p>
+          <p className="version-note">最新版: 2026/08/14 12:25 PDF読込対応</p>
         </div>
         <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
           保存先を開く
