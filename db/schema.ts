@@ -8,3 +8,11 @@ export const cases = sqliteTable("cases", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const processItems = sqliteTable("process_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  company: text("company").notNull(),
+  data: text("data").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});

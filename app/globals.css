@@ -73,6 +73,8 @@ header p {
 
 button,
 input,
+select,
+textarea,
 .button {
   font: inherit;
 }
@@ -88,6 +90,27 @@ button,
   text-decoration: none;
 }
 
+button.secondary {
+  background: var(--white);
+  border-color: var(--line);
+  color: var(--navy);
+}
+
+.plain-button,
+.link-button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  padding: 0;
+}
+
+.link-button {
+  color: var(--navy);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 input {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -100,6 +123,14 @@ select {
   border-radius: 6px;
   min-width: 160px;
   padding: 8px 10px;
+}
+
+textarea {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  resize: vertical;
+  width: 100%;
 }
 
 .tabs {
@@ -221,6 +252,98 @@ section {
   color: var(--teal);
   font-size: 13px;
   font-weight: 700;
+}
+
+.modal-backdrop {
+  align-items: flex-start;
+  background: rgb(15 23 42 / 52%);
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  overflow: auto;
+  padding: 32px 18px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 20;
+}
+
+.modal {
+  background: var(--white);
+  border-radius: 8px;
+  box-shadow: 0 18px 60px rgb(15 23 42 / 28%);
+  margin: 0;
+  max-width: 1120px;
+  overflow: hidden;
+  width: min(1120px, 100%);
+}
+
+.modal-head {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 16px;
+}
+
+.detail-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  padding: 16px;
+}
+
+.detail-grid label {
+  display: grid;
+  gap: 5px;
+}
+
+.detail-grid label > span,
+.detail-grid .wide > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-grid input,
+.detail-grid select {
+  min-width: 0;
+  width: 100%;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.step-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+}
+
+.check-line {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex !important;
+  gap: 8px !important;
+  padding: 8px 10px;
+}
+
+.check-line input {
+  min-width: 0;
+  width: auto;
+}
+
+.status-toggles {
+  display: flex;
+  gap: 8px;
+}
+
+.modal-actions {
+  border-top: 1px solid var(--line);
+  padding: 14px 16px;
 }
 
 table {
@@ -346,6 +469,11 @@ td.money {
   }
 
   .case-form {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-grid,
+  .step-grid {
     grid-template-columns: 1fr;
   }
 }

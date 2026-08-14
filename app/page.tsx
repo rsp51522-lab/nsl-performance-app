@@ -8,12 +8,22 @@ type Row = (string | number)[];
 type SheetData = { headers: string[]; rows: Row[] };
 type AppData = { cases: SheetData; process: SheetData; settings: Row[] };
 type CaseRecord = Record<string, string | number>;
-type ProcessRecord = Record<string, string | number>;
+type ProcessRecord = Record<string, string | number | boolean | string[]>;
+type ProcessItem = ProcessRecord & { id?: number };
 
 const data = seed as AppData;
 const caseHeaders = data.cases.headers;
 const sheetUrl =
   "https://docs.google.com/spreadsheets/d/1mzCoalbNbLwe8lkKmyuGBMp1NcFvJvs-ix_9_QkCaWI/edit";
+const defaultSteps = [
+  "申込",
+  "デモ作成",
+  "見積作成",
+  "見積内容で進捗工程決定",
+  "作成開始入力",
+  "納期入力",
+  "作業内容進捗報告",
+];
 const moneyHeaders = new Set([
   "税抜単価",
   "税抜金額",
@@ -60,8 +70,8 @@ function yen(value: string | number) {
   }).format(Number(value) || 0);
 }
 
-function dateValue(value: string | number) {
-  if (!value) return null;
+function dateValue(value: string | number | boolean | string[]) {
+  if (!value || Array.isArray(value) || typeof value === "boolean") return null;
   const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? null : date;
 }
@@ -71,7 +81,24 @@ function monthKey(value: string | number) {
   return date ? date.toISOString().slice(0, 7) : "";
 }
 
-function statusClass(status: string | number) {
+function calcDays(hours: string | number | boolean | string[]) {
+  const value = Number(hours) || 0;
+  return value ? Math.ceil(value / 8) : "";
+}
+
+function statusFor(item: ProcessRecord) {
+  if (item["完了"] === true || item["作業状況"] === "完了") return "納品済";
+  const due = dateValue(item["最終納品予定"]);
+  if (!due) return "未設定";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (due < today) return "遅延";
+  const diffDays = (due.getTime() - today.getTime()) / 86400000;
+  if (diffDays <= 3) return "3日以内";
+  return "予定内";
+}
+
+function statusClass(status: string | number | boolean | string[]) {
   if (status === "納品済") return "done";
   if (status === "遅延") return "late";
   if (status === "3日以内") return "soon";
@@ -93,6 +120,31 @@ function weekStarts(rows: ProcessRecord[]) {
     weeks.push(new Date(date));
   }
   return weeks;
+}
+
+function initialProcessItems() {
+  return (asObjects(data.process) as ProcessRecord[]).map((row, index) => {
+    const hours = (Number(row["合計日数"]) || 0) * 8;
+    const steps = [
+      row["初回申込"] ? "申込" : "",
+      row["作業内容"] ? "見積内容で進捗工程決定" : "",
+      row["作業開始"] ? "作成開始入力" : "",
+      row["最終納品予定"] ? "納期入力" : "",
+    ].filter(Boolean);
+    const item = {
+      id: index + 1,
+      ...row,
+      作業時間: hours || "",
+      作業日数: hours ? Math.ceil(hours / 8) : "",
+      作業状況: row["納期判定"] === "納品済" ? "完了" : "作成中",
+      完了: row["納期判定"] === "納品済",
+      進捗工程: steps,
+      見積PDF名: "",
+      見積読込内容: "",
+      作業内容進捗報告: "",
+    };
+    return { ...item, 納期判定: statusFor(item) };
+  });
 }
 
 function SimpleTable({
@@ -135,16 +187,28 @@ export default function Home() {
   const [view, setView] = useState("dashboard");
   const [search, setSearch] = useState("");
   const [cases, setCases] = useState<CaseRecord[]>(asObjects(data.cases) as CaseRecord[]);
+  const [processItems, setProcessItems] = useState<ProcessItem[]>(initialProcessItems());
+  const [processSteps, setProcessSteps] = useState(defaultSteps);
+  const [selectedProcess, setSelectedProcess] = useState<ProcessItem | null>(null);
   const [form, setForm] = useState<CaseRecord>(initialForm);
   const [message, setMessage] = useState("");
+  const [processMessage, setProcessMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const process = useMemo(() => asObjects(data.process) as ProcessRecord[], []);
+  const [isProcessSaving, setIsProcessSaving] = useState(false);
 
   useEffect(() => {
     fetch("/api/cases")
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (payload?.cases) setCases(payload.cases);
+      })
+      .catch(() => undefined);
+
+    fetch("/api/process")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (payload?.items) setProcessItems(payload.items);
+        if (payload?.steps) setProcessSteps(payload.steps);
       })
       .catch(() => undefined);
   }, []);
@@ -232,16 +296,17 @@ export default function Home() {
   const filteredCases = cases.filter((row) =>
     JSON.stringify(row).toLowerCase().includes(search.toLowerCase()),
   );
-  const weeks = weekStarts(process);
+  const weeks = weekStarts(processItems);
   const processHeaders = [
     "NO",
     "会社名",
     "作業内容",
-    "合計日数",
-    "営業",
-    "開発",
+    "作業時間",
+    "作業日数",
+    "作業状況",
     "作業開始",
     "最終納品予定",
+    "進捗工程",
     "納期判定",
   ];
 
@@ -255,6 +320,48 @@ export default function Home() {
       next["申込金額"] = subtotal ? Math.round(subtotal * 1.1) : "";
     }
     setForm(next);
+  }
+
+  function updateSelected(key: string, value: string | boolean | string[]) {
+    if (!selectedProcess) return;
+    const next = { ...selectedProcess, [key]: value };
+    next["作業日数"] = calcDays(next["作業時間"]);
+    next["作業状況"] = next["完了"] === true ? "完了" : "作成中";
+    next["納期判定"] = statusFor(next);
+    setSelectedProcess(next);
+  }
+
+  function toggleStep(step: string) {
+    const current = Array.isArray(selectedProcess?.["進捗工程"])
+      ? (selectedProcess?.["進捗工程"] as string[])
+      : [];
+    const next = current.includes(step)
+      ? current.filter((item) => item !== step)
+      : [...current, step];
+    updateSelected("進捗工程", next);
+  }
+
+  async function readQuotePdf(file: File) {
+    setProcessMessage("PDFを読み込んでいます。");
+    const pdfjs: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const pdf = await pdfjs.getDocument({ data: bytes, disableWorker: true }).promise;
+    const pages: string[] = [];
+
+    for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
+      const page = await pdf.getPage(pageNo);
+      const content = await page.getTextContent();
+      pages.push(content.items.map((item: any) => item.str || "").join(" "));
+    }
+
+    const text = pages.join("\n").trim();
+    const hours = estimateHours(text);
+    const content = extractWorkContent(text);
+    updateSelected("見積PDF名", file.name);
+    updateSelected("見積読込内容", text);
+    if (content) updateSelected("作業内容", content);
+    if (hours) updateSelected("作業時間", String(hours));
+    setProcessMessage("PDFから作業内容を読み込みました。");
   }
 
   async function addCase(event: FormEvent<HTMLFormElement>) {
@@ -282,6 +389,30 @@ export default function Home() {
       setMessage(error instanceof Error ? error.message : "保存できませんでした。");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function saveProcess() {
+    if (!selectedProcess) return;
+    setIsProcessSaving(true);
+    setProcessMessage("");
+    try {
+      const response = await fetch("/api/process", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item: selectedProcess }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "保存できませんでした。");
+      setProcessItems((current) =>
+        current.map((item) => (item.id === result.item.id ? result.item : item)),
+      );
+      setSelectedProcess(result.item);
+      setProcessMessage("工程を保存しました。");
+    } catch (error) {
+      setProcessMessage(error instanceof Error ? error.message : "保存できませんでした。");
+    } finally {
+      setIsProcessSaving(false);
     }
   }
 
@@ -362,36 +493,11 @@ export default function Home() {
               <Field label="アポ日" onChange={updateForm} type="date" value={form["アポ日"]} />
               <Field label="申込日" onChange={updateForm} type="date" value={form["申込日"]} />
               <Field label="入金日" onChange={updateForm} type="date" value={form["入金日"]} />
-              <SelectField
-                label="営業"
-                onChange={updateForm}
-                options={["浅野", "鹿島", "川西", ""]}
-                value={form["営業"]}
-              />
-              <SelectField
-                label="開発"
-                onChange={updateForm}
-                options={["鹿島", "川西", "浅野", ""]}
-                value={form["開発"]}
-              />
-              <SelectField
-                label="サブ"
-                onChange={updateForm}
-                options={["", "鹿島", "川西", "浅野"]}
-                value={form["サブ"]}
-              />
-              <SelectField
-                label="申込状況"
-                onChange={updateForm}
-                options={["", "済"]}
-                value={form["申込状況"]}
-              />
-              <SelectField
-                label="入金状況"
-                onChange={updateForm}
-                options={["", "済"]}
-                value={form["入金状況"]}
-              />
+              <SelectField label="営業" onChange={updateForm} options={["浅野", "鹿島", "川西", ""]} value={form["営業"]} />
+              <SelectField label="開発" onChange={updateForm} options={["鹿島", "川西", "浅野", ""]} value={form["開発"]} />
+              <SelectField label="サブ" onChange={updateForm} options={["", "鹿島", "川西", "浅野"]} value={form["サブ"]} />
+              <SelectField label="申込状況" onChange={updateForm} options={["", "済"]} value={form["申込状況"]} />
+              <SelectField label="入金状況" onChange={updateForm} options={["", "済"]} value={form["入金状況"]} />
               <Field label="サービス" onChange={updateForm} value={form["サービス"]} />
               <Field label="税抜単価" onChange={updateForm} type="number" value={form["税抜単価"]} />
               <Field label="個数" onChange={updateForm} type="number" value={form["個数"]} />
@@ -427,7 +533,7 @@ export default function Home() {
       )}
 
       {view === "process" && (
-        <Panel action={<span className="note">同一会社は1行に集約</span>} title="会社別工程">
+        <Panel action={<span className="note">会社名・納期判定をクリックすると詳細を確認できます</span>} title="会社別工程">
           <div className="table-wrap">
             <table className="gantt">
               <thead>
@@ -443,17 +549,26 @@ export default function Home() {
                 </tr>
               </thead>
               <tbody>
-                {process.map((row, rowIndex) => {
+                {processItems.map((row) => {
                   const start = dateValue(row["作業開始"]);
                   const due = dateValue(row["最終納品予定"]);
+                  const status = statusFor(row);
                   return (
-                    <tr key={rowIndex}>
+                    <tr key={String(row.id)}>
                       {processHeaders.map((header) => (
                         <td key={header}>
-                          {header === "納期判定" ? (
-                            <span className={`status ${statusClass(row[header])}`}>{row[header]}</span>
+                          {header === "会社名" ? (
+                            <button className="link-button" onClick={() => setSelectedProcess(row)} type="button">
+                              {String(row[header] || "")}
+                            </button>
+                          ) : header === "納期判定" ? (
+                            <button className="plain-button" onClick={() => setSelectedProcess(row)} type="button">
+                              <span className={`status ${statusClass(status)}`}>{status}</span>
+                            </button>
+                          ) : header === "進捗工程" ? (
+                            Array.isArray(row["進捗工程"]) ? row["進捗工程"].length : ""
                           ) : (
-                            row[header]
+                            String(row[header] ?? "")
                           )}
                         </td>
                       ))}
@@ -463,7 +578,7 @@ export default function Home() {
                         const active = start && due && week <= due && end >= start;
                         return (
                           <td className="barcell" key={week.toISOString()}>
-                            {active && <span className={`bar ${statusClass(row["納期判定"])}`} />}
+                            {active && <span className={`bar ${statusClass(status)}`} />}
                           </td>
                         );
                       })}
@@ -501,8 +616,165 @@ export default function Home() {
           />
         </Panel>
       )}
+
+      {selectedProcess && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <section className="modal">
+            <div className="modal-head">
+              <div>
+                <h2>{String(selectedProcess["会社名"] || "")}</h2>
+                <p className="note">現在の納期判定: {statusFor(selectedProcess)}</p>
+              </div>
+              <button className="secondary" onClick={() => setSelectedProcess(null)} type="button">
+                閉じる
+              </button>
+            </div>
+
+            <div className="detail-grid">
+              <label className="wide">
+                <span>進捗工程</span>
+                <div className="step-grid">
+                  {processSteps.map((step) => {
+                    const checked = Array.isArray(selectedProcess["進捗工程"])
+                      ? selectedProcess["進捗工程"].includes(step)
+                      : false;
+                    return (
+                      <label className="check-line" key={step}>
+                        <input checked={checked} onChange={() => toggleStep(step)} type="checkbox" />
+                        {step}
+                      </label>
+                    );
+                  })}
+                </div>
+              </label>
+
+              <label className="wide">
+                <span>作業内容</span>
+                <textarea
+                  onChange={(event) => updateSelected("作業内容", event.target.value)}
+                  rows={4}
+                  value={String(selectedProcess["作業内容"] || "")}
+                />
+              </label>
+
+              <label>
+                <span>作業時間</span>
+                <input
+                  min="0"
+                  onChange={(event) => updateSelected("作業時間", event.target.value)}
+                  type="number"
+                  value={String(selectedProcess["作業時間"] || "")}
+                />
+              </label>
+              <label>
+                <span>作業日数</span>
+                <input readOnly value={String(calcDays(selectedProcess["作業時間"]) || "")} />
+              </label>
+              <label>
+                <span>作業開始</span>
+                <input
+                  onChange={(event) => updateSelected("作業開始", event.target.value)}
+                  type="date"
+                  value={String(selectedProcess["作業開始"] || "")}
+                />
+              </label>
+              <label>
+                <span>納期入力</span>
+                <input
+                  onChange={(event) => updateSelected("最終納品予定", event.target.value)}
+                  type="date"
+                  value={String(selectedProcess["最終納品予定"] || "")}
+                />
+              </label>
+
+              <label>
+                <span>作業状態</span>
+                <div className="status-toggles">
+                  <label className="check-line">
+                    <input
+                      checked={selectedProcess["完了"] !== true}
+                      onChange={() => updateSelected("完了", false)}
+                      type="checkbox"
+                    />
+                    作成中
+                  </label>
+                  <label className="check-line">
+                    <input
+                      checked={selectedProcess["完了"] === true}
+                      onChange={() => updateSelected("完了", true)}
+                      type="checkbox"
+                    />
+                    完了
+                  </label>
+                </div>
+              </label>
+
+              <label className="wide">
+                <span>見積PDF読込</span>
+                <input
+                  accept="application/pdf"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void readQuotePdf(file);
+                  }}
+                  type="file"
+                />
+                {selectedProcess["見積PDF名"] && (
+                  <span className="note">読込済み: {String(selectedProcess["見積PDF名"])}</span>
+                )}
+              </label>
+
+              <label className="wide">
+                <span>PDF読込内容</span>
+                <textarea
+                  onChange={(event) => updateSelected("見積読込内容", event.target.value)}
+                  rows={4}
+                  value={String(selectedProcess["見積読込内容"] || "")}
+                />
+              </label>
+
+              <label className="wide">
+                <span>作業内容進捗報告</span>
+                <textarea
+                  onChange={(event) => updateSelected("作業内容進捗報告", event.target.value)}
+                  rows={4}
+                  value={String(selectedProcess["作業内容進捗報告"] || "")}
+                />
+              </label>
+            </div>
+
+            <div className="form-actions modal-actions">
+              <button disabled={isProcessSaving} onClick={saveProcess} type="button">
+                {isProcessSaving ? "保存中" : "工程を保存"}
+              </button>
+              {processMessage && <span className="message">{processMessage}</span>}
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
+}
+
+function estimateHours(text: string) {
+  const hourMatches = [...text.matchAll(/([0-9]+(?:\.[0-9]+)?)\s*(?:時間|h|H)/g)];
+  if (hourMatches.length) {
+    return hourMatches.reduce((sum, match) => sum + Number(match[1]), 0);
+  }
+  const dayMatches = [...text.matchAll(/([0-9]+(?:\.[0-9]+)?)\s*日/g)];
+  if (dayMatches.length) {
+    return dayMatches.reduce((sum, match) => sum + Number(match[1]) * 8, 0);
+  }
+  return 0;
+}
+
+function extractWorkContent(text: string) {
+  return text
+    .split(/\n|。/)
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 3)
+    .slice(0, 8)
+    .join(" / ");
 }
 
 function Field({
