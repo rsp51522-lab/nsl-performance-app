@@ -272,27 +272,31 @@ export default function Home() {
       for (const row of cases) {
         const amount = Number(row["申込金額"]) || 0;
         const paid = Number(row["入金金額"]) || 0;
-        if (name === "浅野" && row["営業"] === name) {
+        const isSales = row["営業"] === name;
+        const isDeveloper = row["開発"] === name;
+        const isSub = row["サブ"] === name;
+        const devRate =
+          name === "鹿島" && isDeveloper ? 0.65 : name === "川西" && isDeveloper ? 0.35 : 0;
+        const subRate = isSub ? 0.35 : 0;
+
+        if (isSales || isDeveloper || isSub) {
           if (row["申込状況"] === "済") appCount += 1;
           if (row["入金状況"] === "済") payCount += 1;
+        }
+
+        if (isSales) {
           app += amount;
           pay += paid;
-        } else if (name === "鹿島" || name === "川西") {
-          const devRate = name === "鹿島" ? 0.7 : 0.5;
-          if (row["開発"] === name || row["サブ"] === name) {
-            if (row["申込状況"] === "済") appCount += 1;
-            if (row["入金状況"] === "済") payCount += 1;
-          }
-          if (row["開発"] === name) {
-            app += amount * devRate;
-            pay += paid * devRate;
-            dev += 1;
-          }
-          if (row["サブ"] === name) {
-            app += amount * 0.35;
-            pay += paid * 0.35;
-            sub += 1;
-          }
+        }
+        if (isDeveloper) {
+          app += amount * devRate;
+          pay += paid * devRate;
+          dev += 1;
+        }
+        if (isSub) {
+          app += amount * subRate;
+          pay += paid * subRate;
+          sub += 1;
         }
       }
       return [name, appCount, app, payCount, pay, dev, sub];
@@ -534,7 +538,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 13:25 PDF明細読込</p>
+          <p className="version-note">最新版: 2026/08/14 13:50 担当者計算式変更</p>
         </div>
         <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
           保存先を開く
