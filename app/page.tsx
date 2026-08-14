@@ -1,20 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import seed from "./seed-data.json";
 
 type Row = (string | number)[];
 type SheetData = { headers: string[]; rows: Row[] };
-type AppData = {
-  cases: SheetData;
-  process: SheetData;
-  settings: Row[];
-};
+type AppData = { cases: SheetData; process: SheetData; settings: Row[] };
 type CaseRecord = Record<string, string | number>;
 type ProcessRecord = Record<string, string | number>;
 
 const data = seed as AppData;
+const caseHeaders = data.cases.headers;
 const sheetUrl =
   "https://docs.google.com/spreadsheets/d/1mzCoalbNbLwe8lkKmyuGBMp1NcFvJvs-ix_9_QkCaWI/edit";
 const moneyHeaders = new Set([
@@ -28,6 +25,26 @@ const moneyHeaders = new Set([
   "担当入金金額",
   "未入金",
 ]);
+const initialForm: CaseRecord = {
+  会社名: "",
+  代表: "",
+  アポ日: "",
+  申込日: "",
+  入金日: "",
+  営業: "浅野",
+  開発: "鹿島",
+  サブ: "",
+  申込状況: "",
+  入金状況: "",
+  サービス: "",
+  税抜単価: "",
+  個数: 1,
+  税抜金額: "",
+  消費税: "",
+  アポ金額: "",
+  申込金額: "",
+  入金金額: "",
+};
 
 function asObjects(sheet: SheetData) {
   return sheet.rows.map((row) =>
@@ -117,8 +134,20 @@ function SimpleTable({
 export default function Home() {
   const [view, setView] = useState("dashboard");
   const [search, setSearch] = useState("");
-  const cases = useMemo(() => asObjects(data.cases) as CaseRecord[], []);
+  const [cases, setCases] = useState<CaseRecord[]>(asObjects(data.cases) as CaseRecord[]);
+  const [form, setForm] = useState<CaseRecord>(initialForm);
+  const [message, setMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const process = useMemo(() => asObjects(data.process) as ProcessRecord[], []);
+
+  useEffect(() => {
+    fetch("/api/cases")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (payload?.cases) setCases(payload.cases);
+      })
+      .catch(() => undefined);
+  }, []);
 
   const kpi = useMemo(
     () => ({
@@ -216,12 +245,52 @@ export default function Home() {
     "納期判定",
   ];
 
+  function updateForm(key: string, value: string) {
+    const next = { ...form, [key]: value };
+    if (key === "税抜単価" || key === "個数") {
+      const subtotal = (Number(next["税抜単価"]) || 0) * (Number(next["個数"]) || 0);
+      next["税抜金額"] = subtotal || "";
+      next["消費税"] = subtotal ? Math.round(subtotal * 0.1) : "";
+      next["アポ金額"] = subtotal || "";
+      next["申込金額"] = subtotal ? Math.round(subtotal * 1.1) : "";
+    }
+    setForm(next);
+  }
+
+  async function addCase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!form["会社名"] && !form["代表"]) {
+      setMessage("会社名または代表を入力してください。");
+      return;
+    }
+
+    setIsSaving(true);
+    setMessage("");
+    const payload = Object.fromEntries(caseHeaders.map((header) => [header, form[header] ?? ""]));
+    try {
+      const response = await fetch("/api/cases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ case: payload }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "保存できませんでした。");
+      setCases((current) => [...current, result.case]);
+      setForm(initialForm);
+      setMessage("新規案件を追加しました。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "保存できませんでした。");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <main>
       <header>
         <div>
           <h1>NSL実績管理アプリ</h1>
-          <p>外部確認用ページ。保存データはGoogleスプレッドシートで管理しています。</p>
+          <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
         </div>
         <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
           保存先を開く
@@ -285,23 +354,76 @@ export default function Home() {
       )}
 
       {view === "cases" && (
-        <Panel
-          action={
-            <input
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="会社名・代表・サービスで検索"
-              value={search}
-            />
-          }
-          title="案件"
-        >
-          <div className="table-wrap">
-            <SimpleTable
-              headers={data.cases.headers}
-              rows={filteredCases.map((row) => data.cases.headers.map((header) => row[header] ?? ""))}
-            />
-          </div>
-        </Panel>
+        <>
+          <Panel title="新規案件追加">
+            <form className="case-form" onSubmit={addCase}>
+              <Field label="会社名" onChange={updateForm} value={form["会社名"]} />
+              <Field label="代表" onChange={updateForm} value={form["代表"]} />
+              <Field label="アポ日" onChange={updateForm} type="date" value={form["アポ日"]} />
+              <Field label="申込日" onChange={updateForm} type="date" value={form["申込日"]} />
+              <Field label="入金日" onChange={updateForm} type="date" value={form["入金日"]} />
+              <SelectField
+                label="営業"
+                onChange={updateForm}
+                options={["浅野", "鹿島", "川西", ""]}
+                value={form["営業"]}
+              />
+              <SelectField
+                label="開発"
+                onChange={updateForm}
+                options={["鹿島", "川西", "浅野", ""]}
+                value={form["開発"]}
+              />
+              <SelectField
+                label="サブ"
+                onChange={updateForm}
+                options={["", "鹿島", "川西", "浅野"]}
+                value={form["サブ"]}
+              />
+              <SelectField
+                label="申込状況"
+                onChange={updateForm}
+                options={["", "済"]}
+                value={form["申込状況"]}
+              />
+              <SelectField
+                label="入金状況"
+                onChange={updateForm}
+                options={["", "済"]}
+                value={form["入金状況"]}
+              />
+              <Field label="サービス" onChange={updateForm} value={form["サービス"]} />
+              <Field label="税抜単価" onChange={updateForm} type="number" value={form["税抜単価"]} />
+              <Field label="個数" onChange={updateForm} type="number" value={form["個数"]} />
+              <Field label="申込金額" onChange={updateForm} type="number" value={form["申込金額"]} />
+              <Field label="入金金額" onChange={updateForm} type="number" value={form["入金金額"]} />
+              <div className="form-actions">
+                <button disabled={isSaving} type="submit">
+                  {isSaving ? "保存中" : "案件追加"}
+                </button>
+                {message && <span className="message">{message}</span>}
+              </div>
+            </form>
+          </Panel>
+
+          <Panel
+            action={
+              <input
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="会社名・代表・サービスで検索"
+                value={search}
+              />
+            }
+            title="案件"
+          >
+            <div className="table-wrap">
+              <SimpleTable
+                headers={caseHeaders}
+                rows={filteredCases.map((row) => caseHeaders.map((header) => row[header] ?? ""))}
+              />
+            </div>
+          </Panel>
+        </>
       )}
 
       {view === "process" && (
@@ -380,6 +502,54 @@ export default function Home() {
         </Panel>
       )}
     </main>
+  );
+}
+
+function Field({
+  label,
+  onChange,
+  type = "text",
+  value,
+}: {
+  label: string;
+  onChange: (key: string, value: string) => void;
+  type?: string;
+  value: string | number;
+}) {
+  return (
+    <label>
+      <span>{label}</span>
+      <input
+        onChange={(event) => onChange(label, event.target.value)}
+        type={type}
+        value={String(value ?? "")}
+      />
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  onChange: (key: string, value: string) => void;
+  options: string[];
+  value: string | number;
+}) {
+  return (
+    <label>
+      <span>{label}</span>
+      <select onChange={(event) => onChange(label, event.target.value)} value={String(value ?? "")}>
+        {options.map((option) => (
+          <option key={option || "blank"} value={option}>
+            {option || "未設定"}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

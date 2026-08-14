@@ -1,0 +1,79 @@
+import { env } from "cloudflare:workers";
+import seed from "../../seed-data.json";
+
+type Row = (string | number)[];
+type CaseRecord = Record<string, string | number>;
+
+const caseHeaders = seed.cases.headers as string[];
+const seedRows = seed.cases.rows as Row[];
+
+function rowToRecord(row: Row): CaseRecord {
+  return Object.fromEntries(caseHeaders.map((key, index) => [key, row[index] ?? ""]));
+}
+
+function normalizeCase(payload: unknown): CaseRecord {
+  const source =
+    payload && typeof payload === "object" && "case" in payload
+      ? (payload as { case: unknown }).case
+      : payload;
+  const record = source && typeof source === "object" ? (source as CaseRecord) : {};
+  return Object.fromEntries(caseHeaders.map((key) => [key, record[key] ?? ""]));
+}
+
+async function ensureSeeded() {
+  const count = await env.DB.prepare("SELECT COUNT(*) AS count FROM cases").first<{ count: number }>();
+  if ((count?.count ?? 0) > 0) return;
+
+  const statements = seedRows.map((row) => {
+    const record = rowToRecord(row);
+    return env.DB.prepare("INSERT INTO cases (no, data) VALUES (?, ?)").bind(
+      Number(record["NO"]) || 0,
+      JSON.stringify(record),
+    );
+  });
+  if (statements.length) {
+    await env.DB.batch(statements);
+  }
+}
+
+async function readCases() {
+  await ensureSeeded();
+  const result = await env.DB.prepare("SELECT id, data FROM cases ORDER BY no, id").all<{
+    id: number;
+    data: string;
+  }>();
+  return result.results.map((item) => ({ id: item.id, ...JSON.parse(item.data) }));
+}
+
+export async function GET() {
+  try {
+    const cases = await readCases();
+    return Response.json({ headers: caseHeaders, cases });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to load cases";
+    return Response.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const payload = await request.json();
+    const record = normalizeCase(payload);
+    const maxRow = await env.DB.prepare("SELECT MAX(no) AS maxNo FROM cases").first<{
+      maxNo: number | null;
+    }>();
+    const nextNo = Number(record["NO"]) || (Number(maxRow?.maxNo) || 0) + 1;
+    record["NO"] = nextNo;
+
+    const result = await env.DB.prepare(
+      "INSERT INTO cases (no, data) VALUES (?, ?) RETURNING id",
+    )
+      .bind(nextNo, JSON.stringify(record))
+      .first<{ id: number }>();
+
+    return Response.json({ case: { id: result?.id, ...record } }, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to save case";
+    return Response.json({ error: message }, { status: 500 });
+  }
+}

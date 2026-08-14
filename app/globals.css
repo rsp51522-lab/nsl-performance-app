@@ -95,6 +95,13 @@ input {
   padding: 8px 10px;
 }
 
+select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 160px;
+  padding: 8px 10px;
+}
+
 .tabs {
   border-bottom: 1px solid var(--line);
   display: flex;
@@ -173,6 +180,47 @@ section {
 .table-wrap {
   max-height: 68vh;
   overflow: auto;
+}
+
+.case-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  padding: 14px;
+}
+
+.case-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.case-form label span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.case-form input,
+.case-form select {
+  min-width: 0;
+  width: 100%;
+}
+
+.form-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+.form-actions button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.message {
+  color: var(--teal);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 table {
@@ -294,6 +342,10 @@ td.money {
   }
 
   .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .case-form {
     grid-template-columns: 1fr;
   }
 }
