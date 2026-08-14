@@ -115,6 +115,12 @@ button.secondary {
   color: var(--navy);
 }
 
+button.danger {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: var(--white);
+}
+
 .plain-button,
 .link-button {
   background: transparent;

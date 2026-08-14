@@ -450,6 +450,7 @@ export default function Home() {
   const [csvMessage, setCsvMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isCaseEditSaving, setIsCaseEditSaving] = useState(false);
+  const [isCaseDeleting, setIsCaseDeleting] = useState(false);
   const [isProcessSaving, setIsProcessSaving] = useState(false);
   const [isCsvSaving, setIsCsvSaving] = useState(false);
   const [isRewardAdmin, setIsRewardAdmin] = useState(false);
@@ -859,6 +860,37 @@ export default function Home() {
     }
   }
 
+  async function deleteEditingCase() {
+    if (!editingCase) return;
+    const id = Number(editingCase.id);
+    if (!id) {
+      setMessage("案件データの読み込み後に削除してください。");
+      return;
+    }
+
+    const company = String(editingCase["会社名"] || editingCase["代表"] || `NO ${editingCase["NO"] || id}`);
+    if (!window.confirm(`${company} の案件を削除します。よろしいですか？`)) return;
+
+    setIsCaseDeleting(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/cases", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "削除できませんでした。");
+      setCases((current) => current.filter((item) => Number(item.id) !== id));
+      setEditingCase(null);
+      setMessage("案件を削除しました。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "削除できませんでした。");
+    } finally {
+      setIsCaseDeleting(false);
+    }
+  }
+
   async function saveCaseAssignment(row: CaseRecord, key: string, value: string) {
     if (rateHeaders.has(key) && !isRewardAdmin) {
       setMessage("報酬率の変更には管理者ログインが必要です。");
@@ -986,7 +1018,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 19:12 案件修正ウィンドウ対応</p>
+          <p className="version-note">最新版: 2026/08/14 19:24 案件削除対応</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
@@ -1381,10 +1413,18 @@ export default function Home() {
                 <p className="note">修正後は上部または下部の保存ボタンを押してください</p>
               </div>
               <div className="modal-head-actions">
-                <button disabled={isCaseEditSaving} form="case-edit-form" type="submit">
+                <button disabled={isCaseEditSaving || isCaseDeleting} form="case-edit-form" type="submit">
                   {isCaseEditSaving ? "保存中" : "修正を保存"}
                 </button>
-                <button className="secondary" onClick={() => setEditingCase(null)} type="button">
+                <button
+                  className="danger"
+                  disabled={isCaseEditSaving || isCaseDeleting}
+                  onClick={() => void deleteEditingCase()}
+                  type="button"
+                >
+                  {isCaseDeleting ? "削除中" : "削除"}
+                </button>
+                <button className="secondary" disabled={isCaseDeleting} onClick={() => setEditingCase(null)} type="button">
                   閉じる
                 </button>
               </div>
@@ -1414,10 +1454,18 @@ export default function Home() {
               <Field label="申込金額" onChange={updateEditingCase} type="number" value={editingCase["申込金額"]} />
               <Field label="入金金額" onChange={updateEditingCase} type="number" value={editingCase["入金金額"]} />
               <div className="form-actions">
-                <button disabled={isCaseEditSaving} type="submit">
+                <button disabled={isCaseEditSaving || isCaseDeleting} type="submit">
                   {isCaseEditSaving ? "保存中" : "修正を保存"}
                 </button>
-                <button className="secondary" onClick={() => setEditingCase(null)} type="button">
+                <button
+                  className="danger"
+                  disabled={isCaseEditSaving || isCaseDeleting}
+                  onClick={() => void deleteEditingCase()}
+                  type="button"
+                >
+                  {isCaseDeleting ? "削除中" : "削除"}
+                </button>
+                <button className="secondary" disabled={isCaseDeleting} onClick={() => setEditingCase(null)} type="button">
                   キャンセル
                 </button>
               </div>

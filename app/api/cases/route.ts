@@ -120,3 +120,21 @@ export async function PUT(request: Request) {
     return Response.json({ error: message }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const payload = (await request.json().catch(() => ({}))) as {
+      id?: number;
+      case?: { id?: number };
+    };
+    const id = Number(payload.id ?? payload.case?.id);
+    if (!id) return Response.json({ error: "id is required" }, { status: 400 });
+
+    await env.DB.prepare("DELETE FROM cases WHERE id = ?").bind(id).run();
+
+    return Response.json({ id });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to delete case";
+    return Response.json({ error: message }, { status: 500 });
+  }
+}
