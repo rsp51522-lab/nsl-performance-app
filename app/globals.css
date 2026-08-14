@@ -213,6 +213,19 @@ section {
   overflow: auto;
 }
 
+.filter-bar {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.filter-bar input,
+.filter-bar select {
+  min-width: 180px;
+}
+
 .case-form {
   display: grid;
   gap: 12px;
@@ -452,6 +465,10 @@ td.money {
 
 .bar.soon {
   background: var(--amber);
+}
+
+.bar.paid {
+  background: #9ca3af;
 }
 
 @media (max-width: 900px) {

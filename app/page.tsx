@@ -187,6 +187,12 @@ function SimpleTable({
 export default function Home() {
   const [view, setView] = useState("dashboard");
   const [search, setSearch] = useState("");
+  const [processFilter, setProcessFilter] = useState({
+    keyword: "",
+    staff: "",
+    status: "",
+    workStatus: "",
+  });
   const [cases, setCases] = useState<CaseRecord[]>(asObjects(data.cases) as CaseRecord[]);
   const [processItems, setProcessItems] = useState<ProcessItem[]>(initialProcessItems());
   const [processSteps, setProcessSteps] = useState(defaultSteps);
@@ -297,6 +303,31 @@ export default function Home() {
   const filteredCases = cases.filter((row) =>
     JSON.stringify(row).toLowerCase().includes(search.toLowerCase()),
   );
+  const paidCaseKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const row of cases) {
+      if (row["入金状況"] !== "済" && !(Number(row["入金金額"]) > 0)) continue;
+      if (row["NO"]) keys.add(`no:${row["NO"]}`);
+      if (row["会社名"]) keys.add(`company:${row["会社名"]}`);
+    }
+    return keys;
+  }, [cases]);
+  const filteredProcessItems = processItems.filter((row) => {
+    const text = JSON.stringify(row).toLowerCase();
+    const keyword = processFilter.keyword.toLowerCase();
+    const status = statusFor(row);
+    const staffMatched =
+      !processFilter.staff ||
+      row["営業"] === processFilter.staff ||
+      row["開発"] === processFilter.staff ||
+      row["サブ"] === processFilter.staff;
+    return (
+      (!keyword || text.includes(keyword)) &&
+      staffMatched &&
+      (!processFilter.status || status === processFilter.status) &&
+      (!processFilter.workStatus || row["作業状況"] === processFilter.workStatus)
+    );
+  });
   const weeks = weekStarts(processItems);
   const processHeaders = [
     "NO",
@@ -446,6 +477,21 @@ export default function Home() {
     } finally {
       setIsProcessSaving(false);
     }
+  }
+
+  function isPaidProcess(row: ProcessRecord) {
+    const noValues = String(row["NO"] || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    return (
+      noValues.some((no) => paidCaseKeys.has(`no:${no}`)) ||
+      paidCaseKeys.has(`company:${String(row["会社名"] || "")}`)
+    );
+  }
+
+  function updateProcessFilter(key: keyof typeof processFilter, value: string) {
+    setProcessFilter((current) => ({ ...current, [key]: value }));
   }
 
   return (
@@ -601,6 +647,41 @@ export default function Home() {
 
       {view === "process" && (
         <Panel action={<span className="note">会社名・納期判定をクリックすると詳細を確認できます</span>} title="会社別工程">
+          <div className="filter-bar">
+            <input
+              onChange={(event) => updateProcessFilter("keyword", event.target.value)}
+              placeholder="会社名・作業内容で検索"
+              value={processFilter.keyword}
+            />
+            <select
+              onChange={(event) => updateProcessFilter("staff", event.target.value)}
+              value={processFilter.staff}
+            >
+              <option value="">担当すべて</option>
+              <option value="浅野">浅野</option>
+              <option value="鹿島">鹿島</option>
+              <option value="川西">川西</option>
+            </select>
+            <select
+              onChange={(event) => updateProcessFilter("status", event.target.value)}
+              value={processFilter.status}
+            >
+              <option value="">納期判定すべて</option>
+              <option value="納品済">納品済</option>
+              <option value="予定内">予定内</option>
+              <option value="3日以内">3日以内</option>
+              <option value="遅延">遅延</option>
+              <option value="未設定">未設定</option>
+            </select>
+            <select
+              onChange={(event) => updateProcessFilter("workStatus", event.target.value)}
+              value={processFilter.workStatus}
+            >
+              <option value="">作業状況すべて</option>
+              <option value="作成中">作成中</option>
+              <option value="完了">完了</option>
+            </select>
+          </div>
           <div className="table-wrap">
             <table className="gantt">
               <thead>
@@ -616,10 +697,11 @@ export default function Home() {
                 </tr>
               </thead>
               <tbody>
-                {processItems.map((row) => {
+                {filteredProcessItems.map((row) => {
                   const start = dateValue(row["作業開始"]);
                   const due = dateValue(row["最終納品予定"]);
                   const status = statusFor(row);
+                  const paid = isPaidProcess(row);
                   return (
                     <tr key={String(row.id)}>
                       {processHeaders.map((header) => (
@@ -645,7 +727,7 @@ export default function Home() {
                         const active = start && due && week <= due && end >= start;
                         return (
                           <td className="barcell" key={week.toISOString()}>
-                            {active && <span className={`bar ${statusClass(status)}`} />}
+                            {active && <span className={`bar ${paid ? "paid" : statusClass(status)}`} />}
                           </td>
                         );
                       })}
