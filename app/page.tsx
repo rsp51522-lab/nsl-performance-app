@@ -359,7 +359,12 @@ export default function Home() {
 
   function updateSelected(key: string, value: string | boolean | string[]) {
     if (!selectedProcess) return;
-    const next = { ...selectedProcess, [key]: value };
+    updateSelectedPatch({ [key]: value });
+  }
+
+  function updateSelectedPatch(patch: Partial<ProcessItem>) {
+    if (!selectedProcess) return;
+    const next = { ...selectedProcess, ...patch };
     next["作業日数"] = calcDays(next["作業時間"]);
     next["作業状況"] = next["完了"] === true ? "完了" : "作成中";
     next["納期判定"] = statusFor(next);
@@ -378,25 +383,46 @@ export default function Home() {
 
   async function readQuotePdf(file: File) {
     setProcessMessage("PDFを読み込んでいます。");
-    const pdfjs: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const pdf = await pdfjs.getDocument({ data: bytes, disableWorker: true }).promise;
-    const pages: string[] = [];
+    try {
+      const pdfjs: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const pdf = await pdfjs.getDocument({ data: bytes, disableWorker: true }).promise;
+      const pages: string[] = [];
 
-    for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
-      const page = await pdf.getPage(pageNo);
-      const content = await page.getTextContent();
-      pages.push(content.items.map((item: any) => item.str || "").join(" "));
+      for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
+        const page = await pdf.getPage(pageNo);
+        const content = await page.getTextContent();
+        pages.push(content.items.map((item: any) => item.str || "").join(" "));
+      }
+
+      const extracted = pages.join("\n").trim();
+      const text =
+        extracted ||
+        `PDFを添付しました: ${file.name}\nこのPDFからは文字を自動抽出できませんでした。画像PDFの場合は、作業内容を手入力してください。`;
+      const hours = estimateHours(text);
+      const content = extractWorkContent(extracted);
+      updateSelectedPatch({
+        見積PDF名: file.name,
+        見積読込内容: text,
+        ...(content ? { 作業内容: content } : {}),
+        ...(hours ? { 作業時間: String(hours) } : {}),
+      });
+      setProcessMessage(
+        extracted
+          ? "PDFから作業内容を読み込みました。"
+          : "PDFは添付済みです。文字抽出できない形式のため、作業内容を手入力してください。",
+      );
+    } catch (error) {
+      updateSelectedPatch({
+        見積PDF名: file.name,
+        見積読込内容: `PDFを添付しました: ${file.name}\n読み込み中にエラーが発生しました。必要に応じて作業内容を手入力してください。`,
+      });
+      setProcessMessage(
+        error instanceof Error
+          ? `PDF読込エラー: ${error.message}`
+          : "PDF読込エラーが発生しました。",
+      );
     }
-
-    const text = pages.join("\n").trim();
-    const hours = estimateHours(text);
-    const content = extractWorkContent(text);
-    updateSelected("見積PDF名", file.name);
-    updateSelected("見積読込内容", text);
-    if (content) updateSelected("作業内容", content);
-    if (hours) updateSelected("作業時間", String(hours));
-    setProcessMessage("PDFから作業内容を読み込みました。");
   }
 
   async function addCase(event: FormEvent<HTMLFormElement>) {
@@ -895,6 +921,7 @@ export default function Home() {
               <label className="wide">
                 <span>PDF読込内容</span>
                 <textarea
+                  placeholder="PDFを選択すると、抽出できた文字がここに入ります。画像PDFの場合は手入力してください。"
                   onChange={(event) => updateSelected("見積読込内容", event.target.value)}
                   rows={4}
                   value={String(selectedProcess["見積読込内容"] || "")}
