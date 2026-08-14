@@ -1,0 +1,299 @@
+@import "tailwindcss";
+
+:root {
+  --navy: #17324d;
+  --teal: #0f766e;
+  --blue: #2563eb;
+  --green: #059669;
+  --amber: #d97706;
+  --red: #dc2626;
+  --line: #d9e2ec;
+  --text: #111827;
+  --muted: #64748b;
+  --bg: #f8fafc;
+  --white: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+}
+
+main {
+  min-height: 100vh;
+  padding-bottom: 32px;
+}
+
+header {
+  align-items: center;
+  background: var(--navy);
+  color: var(--white);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 20px 24px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 23px;
+  font-weight: 800;
+}
+
+h2 {
+  font-size: 16px;
+}
+
+header p,
+.note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+header p {
+  color: #dbeafe;
+  margin-top: 4px;
+}
+
+button,
+input,
+.button {
+  font: inherit;
+}
+
+button,
+.button {
+  background: var(--teal);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--white);
+  cursor: pointer;
+  padding: 9px 12px;
+  text-decoration: none;
+}
+
+input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 240px;
+  padding: 8px 10px;
+}
+
+.tabs {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 6px;
+  margin: 18px 24px 14px;
+}
+
+.tabs button {
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  color: var(--muted);
+  padding: 10px 12px;
+}
+
+.tabs button.active {
+  border-bottom-color: var(--teal);
+  color: var(--teal);
+  font-weight: 700;
+}
+
+section {
+  margin: 0 24px;
+}
+
+.kpis {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  margin-bottom: 16px;
+}
+
+.kpi {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.kpi span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+}
+
+.kpi strong {
+  display: block;
+  font-size: 24px;
+  margin-top: 6px;
+}
+
+.summary-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
+}
+
+.panel {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.panel-head {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.table-wrap {
+  max-height: 68vh;
+  overflow: auto;
+}
+
+table {
+  border-collapse: collapse;
+  min-width: 980px;
+  width: 100%;
+}
+
+table.compact,
+.summary-grid table {
+  min-width: 0;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid #edf2f7;
+  font-size: 12px;
+  padding: 7px 8px;
+  white-space: nowrap;
+}
+
+th {
+  background: var(--teal);
+  color: var(--white);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.compact th,
+.compact td {
+  font-size: 11px;
+  padding: 7px 6px;
+}
+
+td.money {
+  text-align: right;
+}
+
+.status {
+  border-radius: 999px;
+  display: inline-block;
+  font-weight: 700;
+  padding: 3px 7px;
+}
+
+.status.done {
+  background: #e8f7ef;
+  color: var(--green);
+}
+
+.status.late {
+  background: #fdecec;
+  color: var(--red);
+}
+
+.status.soon {
+  background: #fff7e6;
+  color: var(--amber);
+}
+
+.status.plan {
+  background: #eaf2ff;
+  color: var(--blue);
+}
+
+.status.unset {
+  background: #f1f5f9;
+  color: var(--muted);
+}
+
+.gantt {
+  min-width: 1120px;
+}
+
+.gantt .barcell {
+  height: 28px;
+  min-width: 54px;
+  width: 54px;
+}
+
+.bar {
+  border-radius: 3px;
+  display: block;
+  height: 14px;
+}
+
+.bar.done {
+  background: var(--green);
+}
+
+.bar.late {
+  background: var(--red);
+}
+
+.bar.plan {
+  background: var(--blue);
+}
+
+.bar.soon {
+  background: var(--amber);
+}
+
+@media (max-width: 900px) {
+  header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  section,
+  .tabs {
+    margin-left: 14px;
+    margin-right: 14px;
+  }
+
+  .kpis {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
