@@ -178,6 +178,58 @@ function taxIncluded(row: CaseRecord, preferredKey: string) {
   return subtotal ? Math.round(subtotal * 1.1) : 0;
 }
 
+function normalizeCompanyName(value: string | number | boolean | string[] | undefined) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[ \t\r\n　]/g, "")
+    .replace(/株式会社|有限会社|\(株\)|（株）|御中|様/g, "")
+    .toLowerCase();
+}
+
+function uniqueList(value: unknown, separatorPattern = /[,、/／]+/) {
+  return String(value || "")
+    .split(separatorPattern)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function joinUnique(current: unknown, next: unknown, separator = " / ", separatorPattern = /[/／]+/) {
+  const values = [...uniqueList(current, separatorPattern), ...uniqueList(next, separatorPattern)];
+  return [...new Set(values)].join(separator);
+}
+
+function mergeDate(current: unknown, next: unknown, direction: "min" | "max") {
+  const currentDate = dateValue(String(current || ""));
+  const nextDate = dateValue(String(next || ""));
+  if (!currentDate) return next || "";
+  if (!nextDate) return current || "";
+  const selected =
+    direction === "min"
+      ? currentDate <= nextDate
+        ? currentDate
+        : nextDate
+      : currentDate >= nextDate
+        ? currentDate
+        : nextDate;
+  return selected.toISOString().slice(0, 10);
+}
+
+function mergeCompanyProcess(base: ProcessItem, next: ProcessRecord) {
+  const merged: ProcessItem = { ...base };
+  merged["NO"] = joinUnique(merged["NO"], next["NO"], ", ", /[,、]+/);
+  merged["作業内容"] = joinUnique(merged["作業内容"], next["作業内容"], " / ", /[/／]+/);
+  merged["作業時間"] = (Number(merged["作業時間"]) || 0) + (Number(next["作業時間"]) || 0) || "";
+  merged["作業日数"] = calcDays(merged["作業時間"]);
+  merged["作業開始"] = mergeDate(merged["作業開始"], next["作業開始"], "min");
+  merged["最終納品予定"] = mergeDate(merged["最終納品予定"], next["最終納品予定"], "max");
+  merged["作業終了"] = mergeDate(merged["作業終了"], next["作業終了"], "max");
+  if (!merged["営業"] && next["営業"]) merged["営業"] = next["営業"];
+  if (!merged["開発"] && next["開発"]) merged["開発"] = next["開発"];
+  if (!merged["サブ"] && next["サブ"]) merged["サブ"] = next["サブ"];
+  merged["納期判定"] = statusFor(merged);
+  return merged;
+}
+
 function processForCase(row: CaseRecord, processItems: ProcessItem[]) {
   const no = String(row["NO"] || "").trim();
   return (
@@ -187,7 +239,9 @@ function processForCase(row: CaseRecord, processItems: ProcessItem[]) {
         .map((value) => value.trim())
         .includes(no),
     ) ||
-    processItems.find((item) => String(item["会社名"] || "") === String(row["会社名"] || ""))
+    processItems.find(
+      (item) => normalizeCompanyName(item["会社名"]) === normalizeCompanyName(row["会社名"]),
+    )
   );
 }
 
@@ -626,11 +680,50 @@ export default function Home() {
     for (const row of cases) {
       if (row["入金状況"] !== "済" && !(Number(row["入金金額"]) > 0)) continue;
       if (row["NO"]) keys.add(`no:${row["NO"]}`);
-      if (row["会社名"]) keys.add(`company:${row["会社名"]}`);
+      const companyKey = normalizeCompanyName(row["会社名"]);
+      if (companyKey) keys.add(`company:${companyKey}`);
     }
     return keys;
   }, [cases]);
-  const filteredProcessItems = processItems.filter((row) => {
+  const groupedProcessItems = useMemo(() => {
+    const groups = new Map<string, ProcessItem>();
+
+    for (const row of processItems) {
+      const companyKey = normalizeCompanyName(row["会社名"]) || `process:${row.id ?? row["NO"]}`;
+      const current = groups.get(companyKey);
+      groups.set(companyKey, current ? mergeCompanyProcess(current, row) : { ...row });
+    }
+
+    for (const row of cases) {
+      const companyKey = normalizeCompanyName(row["会社名"]);
+      if (!companyKey) continue;
+      const caseProcess: ProcessRecord = {
+        NO: row["NO"] || "",
+        会社名: row["会社名"] || "",
+        作業内容: row["サービス"] || "",
+        作業時間: "",
+        作業日数: "",
+        作業状況: "作成中",
+        営業: row["営業"] || "",
+        開発: row["開発"] || "",
+        サブ: row["サブ"] || "",
+        作業開始: "",
+        最終納品予定: "",
+        進捗工程: row["申込状況"] === "済" ? ["申込"] : [],
+        納期判定: "未設定",
+      };
+      const current = groups.get(companyKey);
+      groups.set(
+        companyKey,
+        current
+          ? mergeCompanyProcess(current, caseProcess)
+          : { ...caseProcess },
+      );
+    }
+
+    return [...groups.values()];
+  }, [cases, processItems]);
+  const filteredProcessItems = groupedProcessItems.filter((row) => {
     const text = JSON.stringify(row).toLowerCase();
     const keyword = processFilter.keyword.toLowerCase();
     const status = statusFor(row);
@@ -954,7 +1047,7 @@ export default function Home() {
       .filter(Boolean);
     return (
       noValues.some((no) => paidCaseKeys.has(`no:${no}`)) ||
-      paidCaseKeys.has(`company:${String(row["会社名"] || "")}`)
+      paidCaseKeys.has(`company:${normalizeCompanyName(row["会社名"])}`)
     );
   }
 
@@ -1018,7 +1111,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 19:24 案件削除対応</p>
+          <p className="version-note">最新版: 2026/08/14 19:34 同一会社工程まとめ対応</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
@@ -1316,7 +1409,7 @@ export default function Home() {
                   const status = statusFor(row);
                   const paid = isPaidProcess(row);
                   return (
-                    <tr key={String(row.id)}>
+                    <tr key={`${String(row.id ?? "")}-${String(row["NO"] || "")}-${String(row["会社名"] || "")}`}>
                       {processHeaders.map((header) => (
                         <td key={header}>
                           {header === "会社名" ? (
