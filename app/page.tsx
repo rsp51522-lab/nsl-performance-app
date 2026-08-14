@@ -270,7 +270,7 @@ export default function Home() {
       let sub = 0;
 
       for (const row of cases) {
-        const amount = Number(row["申込金額"]) || 0;
+        const amount = Number(row["税抜金額"]) || 0;
         const paid = Number(row["入金金額"]) || 0;
         const isSales = row["営業"] === name;
         const isDeveloper = row["開発"] === name;
@@ -538,7 +538,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 13:50 担当者計算式変更</p>
+          <p className="version-note">最新版: 2026/08/14 14:55 税抜担当者計算</p>
         </div>
         <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
           保存先を開く
