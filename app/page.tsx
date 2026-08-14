@@ -96,7 +96,7 @@ function staffApplicationReward(row: CaseRecord, name: string) {
 
   if (row["営業"] === name) reward += amount * (name === "浅野" ? 0.3 : 1);
   if (row["開発"] === name) {
-    if (name === "鹿島") reward += amount * 0.65;
+    if (name === "鹿島") reward += amount * (row["サブ"] ? 0.35 : 0.7);
     if (name === "川西") reward += amount * 0.35;
   }
   if (row["サブ"] === name) reward += amount * 0.35;
@@ -293,7 +293,13 @@ export default function Home() {
         const isDeveloper = row["開発"] === name;
         const isSub = row["サブ"] === name;
         const devRate =
-          name === "鹿島" && isDeveloper ? 0.65 : name === "川西" && isDeveloper ? 0.35 : 0;
+          name === "鹿島" && isDeveloper
+            ? row["サブ"]
+              ? 0.35
+              : 0.7
+            : name === "川西" && isDeveloper
+              ? 0.35
+              : 0;
         const subRate = isSub ? 0.35 : 0;
 
         if (isSales || isDeveloper || isSub) {
@@ -571,7 +577,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 15:04 浅野報酬30%</p>
+          <p className="version-note">最新版: 2026/08/14 15:15 鹿島計算式修正</p>
         </div>
         <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
           保存先を開く
