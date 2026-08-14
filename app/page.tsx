@@ -107,15 +107,13 @@ function statusClass(status: string | number | boolean | string[]) {
   return "unset";
 }
 
-function weekStarts(rows: ProcessRecord[]) {
-  const dates = rows
-    .flatMap((row) => [dateValue(row["作業開始"]), dateValue(row["最終納品予定"])])
-    .filter(Boolean) as Date[];
-  if (!dates.length) return [];
-  const min = new Date(Math.min(...dates.map((date) => date.getTime())));
-  const max = new Date(Math.max(...dates.map((date) => date.getTime())));
+function weekStarts() {
+  const today = new Date();
+  const min = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const max = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   const day = min.getDay();
-  min.setDate(min.getDate() + (day === 0 ? -6 : 1 - day));
+  const daysUntilMonday = (8 - day) % 7;
+  min.setDate(min.getDate() + daysUntilMonday);
   const weeks: Date[] = [];
   for (const date = new Date(min); date <= max; date.setDate(date.getDate() + 7)) {
     weeks.push(new Date(date));
@@ -328,7 +326,7 @@ export default function Home() {
       (!processFilter.workStatus || row["作業状況"] === processFilter.workStatus)
     );
   });
-  const weeks = weekStarts(processItems);
+  const weeks = weekStarts();
   const processHeaders = [
     "NO",
     "会社名",
