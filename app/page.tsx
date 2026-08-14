@@ -677,7 +677,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 15:37 報酬率管理者制限</p>
+          <p className="version-note">最新版: 2026/08/14 18:12 担当者スマホ横スクロール対応</p>
         </div>
         <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
           保存先を開く
@@ -1008,18 +1008,20 @@ export default function Home() {
       {view === "people" && (
         <>
           <Panel title="担当者">
-            <SimpleTable
-              headers={[
-                "担当者",
-                "担当申込件数",
-                "担当申込金額",
-                "担当入金件数",
-                "担当入金金額",
-                "開発件数",
-                "サブ件数",
-              ]}
-              rows={peopleRows}
-            />
+            <div className="table-wrap sticky-staff-table">
+              <SimpleTable
+                headers={[
+                  "担当者",
+                  "担当申込件数",
+                  "担当申込金額",
+                  "担当入金件数",
+                  "担当入金金額",
+                  "開発件数",
+                  "サブ件数",
+                ]}
+                rows={peopleRows}
+              />
+            </div>
           </Panel>
           <Panel title="担当者報酬一覧">
             <div className="table-wrap">

@@ -219,6 +219,11 @@ section {
   overflow: auto;
 }
 
+.sticky-staff-table {
+  -webkit-overflow-scrolling: touch;
+  overflow-x: auto;
+}
+
 .case-toolbar {
   align-items: center;
   display: flex;
@@ -432,6 +437,30 @@ table.compact,
   min-width: 0;
 }
 
+.sticky-staff-table table {
+  min-width: 860px;
+}
+
+.sticky-staff-table th:first-child,
+.sticky-staff-table td:first-child {
+  background: var(--white);
+  box-shadow: 1px 0 0 #edf2f7;
+  left: 0;
+  min-width: 96px;
+  position: sticky;
+  width: 96px;
+  z-index: 2;
+}
+
+.sticky-staff-table th:first-child {
+  background: var(--teal);
+  z-index: 3;
+}
+
+.sticky-staff-table .total-row td:first-child {
+  background: #f0fdfa;
+}
+
 th,
 td {
   border-bottom: 1px solid var(--line);
@@ -559,5 +588,14 @@ td.money {
   .detail-grid,
   .step-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sticky-staff-table {
+    max-height: none;
+    width: 100%;
+  }
+
+  .sticky-staff-table table {
+    min-width: 820px;
   }
 }
