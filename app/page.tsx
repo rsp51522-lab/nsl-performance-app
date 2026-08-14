@@ -10,6 +10,8 @@ type AppData = { cases: SheetData; process: SheetData; settings: Row[] };
 type CaseRecord = Record<string, string | number>;
 type ProcessRecord = Record<string, string | number | boolean | string[]>;
 type ProcessItem = ProcessRecord & { id?: number };
+type CsvRow = (string | number)[];
+type CsvFile = { name: string; rows: CsvRow[] };
 
 const data = seed as AppData;
 const rewardRateHeaders = ["営業報酬率", "開発報酬率", "サブ報酬率"];
@@ -26,6 +28,8 @@ const defaultSteps = [
   "作業内容進捗報告",
 ];
 const staffOptions = ["", "浅野", "鹿島", "川西"];
+const exportStaff = ["浅野", "鹿島", "川西"];
+const exportMonths = [6, 7, 8, 9, 10, 11, 12];
 const rateHeaders = new Set(rewardRateHeaders);
 const moneyHeaders = new Set([
   "税抜単価",
@@ -90,6 +94,11 @@ function monthKey(value: string | number) {
   return date ? date.toISOString().slice(0, 7) : "";
 }
 
+function isInMonth(value: string | number, year: number, month: number) {
+  const date = dateValue(value);
+  return !!date && date.getFullYear() === year && date.getMonth() + 1 === month;
+}
+
 function calcDays(hours: string | number | boolean | string[]) {
   const value = Number(hours) || 0;
   return value ? Math.ceil(value / 8) : "";
@@ -131,6 +140,198 @@ function staffApplicationReward(row: CaseRecord, name: string) {
   }
 
   return Math.round(reward);
+}
+
+function staffPaidReward(row: CaseRecord, name: string) {
+  const paid = Number(row["入金金額"]) || 0;
+  let reward = 0;
+
+  if (row["営業"] === name) {
+    reward += paid * rewardRate(row, "営業報酬率", defaultRewardRate(row, "sales", name));
+  }
+  if (row["開発"] === name) {
+    reward += paid * rewardRate(row, "開発報酬率", defaultRewardRate(row, "developer", name));
+  }
+  if (row["サブ"] === name) {
+    reward += paid * rewardRate(row, "サブ報酬率", defaultRewardRate(row, "sub", name));
+  }
+
+  return Math.round(reward);
+}
+
+function assignedTo(row: CaseRecord, name: string) {
+  return row["営業"] === name || row["開発"] === name || row["サブ"] === name;
+}
+
+function hasApplication(row: CaseRecord) {
+  return row["申込状況"] === "済" || !!row["申込日"];
+}
+
+function hasPayment(row: CaseRecord) {
+  return row["入金状況"] === "済" || !!row["入金日"] || Number(row["入金金額"]) > 0;
+}
+
+function taxIncluded(row: CaseRecord, preferredKey: string) {
+  const preferred = Number(row[preferredKey]) || 0;
+  if (preferred) return Math.round(preferred);
+  const subtotal = Number(row["税抜金額"]) || (Number(row["税抜単価"]) || 0) * (Number(row["個数"]) || 0);
+  return subtotal ? Math.round(subtotal * 1.1) : 0;
+}
+
+function processForCase(row: CaseRecord, processItems: ProcessItem[]) {
+  const no = String(row["NO"] || "").trim();
+  return (
+    processItems.find((item) =>
+      String(item["NO"] || "")
+        .split(",")
+        .map((value) => value.trim())
+        .includes(no),
+    ) ||
+    processItems.find((item) => String(item["会社名"] || "") === String(row["会社名"] || ""))
+  );
+}
+
+function deliveryDateFor(row: CaseRecord, processItems: ProcessItem[]) {
+  const process = processForCase(row, processItems);
+  return String(process?.["作業終了"] || process?.["最終納品予定"] || "");
+}
+
+function rowTouchesMonth(row: CaseRecord, year: number, month: number) {
+  return (
+    isInMonth(row["アポ日"], year, month) ||
+    isInMonth(row["申込日"], year, month) ||
+    isInMonth(row["入金日"], year, month)
+  );
+}
+
+function detailCsvRows(rows: CaseRecord[], processItems: ProcessItem[]): CsvRow[] {
+  const headers = [
+    "会社名",
+    "代表名",
+    "営業",
+    "開発",
+    "サブ",
+    "受付日",
+    "受付内容",
+    "受付数",
+    "受付単価",
+    "受付料金税込",
+    "申込日",
+    "申込内容",
+    "申込数",
+    "申込単価",
+    "申込料金税込",
+    "契約日",
+    "納品日",
+    "入金日",
+    "入金料金税込",
+  ];
+
+  return [
+    headers,
+    ...rows.map((row) => [
+      row["会社名"] || "",
+      row["代表"] || "",
+      row["営業"] || "",
+      row["開発"] || "",
+      row["サブ"] || "",
+      row["アポ日"] || "",
+      row["サービス"] || "",
+      row["個数"] || "",
+      row["税抜単価"] || "",
+      taxIncluded(row, "アポ金額"),
+      row["申込日"] || "",
+      row["サービス"] || "",
+      row["個数"] || "",
+      row["税抜単価"] || "",
+      taxIncluded(row, "申込金額"),
+      row["申込日"] || "",
+      deliveryDateFor(row, processItems),
+      row["入金日"] || "",
+      row["入金金額"] || "",
+    ]),
+  ];
+}
+
+function summaryRows(title: string, rows: CaseRecord[], processItems: ProcessItem[]): CsvRow[] {
+  const current = new Date();
+  const currentYear = current.getFullYear();
+  const currentMonth = current.getMonth() + 1;
+  const yearRows = rows.filter((row) => {
+    const keys = ["アポ日", "申込日", "入金日"];
+    return keys.some((key) => {
+      const date = dateValue(row[key]);
+      return date?.getFullYear() === currentYear;
+    });
+  });
+  const monthRows = rows.filter((row) => rowTouchesMonth(row, currentYear, currentMonth));
+
+  const csvRows: CsvRow[] = [
+    [title],
+    [],
+    ["全体年間売上", yearRows.reduce((sum, row) => sum + (Number(row["入金金額"]) || 0), 0)],
+    ["年間申込数", yearRows.filter(hasApplication).length],
+    ["年間契約数", yearRows.filter(hasApplication).length],
+    [],
+    ["担当者", "個人年間売上", "年間申込数", "年間契約数"],
+    ...exportStaff.map((name) => [
+      name,
+      yearRows.reduce((sum, row) => sum + (assignedTo(row, name) ? staffPaidReward(row, name) : 0), 0),
+      yearRows.filter((row) => assignedTo(row, name) && hasApplication(row)).length,
+      yearRows.filter((row) => assignedTo(row, name) && hasApplication(row)).length,
+    ]),
+    [],
+    ["今月売上", monthRows.reduce((sum, row) => sum + (Number(row["入金金額"]) || 0), 0)],
+    ["今月申込数", monthRows.filter(hasApplication).length],
+    ["今月契約数", monthRows.filter(hasApplication).length],
+    [],
+    ["明細"],
+    ...detailCsvRows(rows, processItems),
+  ];
+
+  return csvRows;
+}
+
+function monthlyCsvRows(year: number, month: number, rows: CaseRecord[], processItems: ProcessItem[]): CsvRow[] {
+  const monthRows = rows.filter((row) => rowTouchesMonth(row, year, month));
+  return [
+    [`${year}.${month} 実績シート`],
+    [],
+    ["担当者", "個人今月売上", "申込数", "契約数", "入金数"],
+    ...exportStaff.map((name) => [
+      name,
+      monthRows.reduce((sum, row) => sum + (assignedTo(row, name) ? staffPaidReward(row, name) : 0), 0),
+      monthRows.filter((row) => assignedTo(row, name) && hasApplication(row)).length,
+      monthRows.filter((row) => assignedTo(row, name) && hasApplication(row)).length,
+      monthRows.filter((row) => assignedTo(row, name) && hasPayment(row)).length,
+    ]),
+    [],
+    ["明細"],
+    ...detailCsvRows(monthRows, processItems),
+  ];
+}
+
+function buildCsvFiles(rows: CaseRecord[], processItems: ProcessItem[]) {
+  return [
+    { name: "NSL_全体実績.csv", rows: summaryRows("全体実績シート", rows, processItems) },
+    ...exportMonths.map((month) => ({
+      name: `NSL_2026.${month}実績.csv`,
+      rows: monthlyCsvRows(2026, month, rows, processItems),
+    })),
+  ];
+}
+
+function csvText(rows: CsvRow[]) {
+  return rows
+    .map((row) =>
+      row
+        .map((cell) => {
+          const value = String(cell ?? "");
+          return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+        })
+        .join(","),
+    )
+    .join("\r\n");
 }
 
 function statusFor(item: ProcessRecord) {
@@ -245,8 +446,10 @@ export default function Home() {
   const [form, setForm] = useState<CaseRecord>(initialForm);
   const [message, setMessage] = useState("");
   const [processMessage, setProcessMessage] = useState("");
+  const [csvMessage, setCsvMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isProcessSaving, setIsProcessSaving] = useState(false);
+  const [isCsvSaving, setIsCsvSaving] = useState(false);
   const [isRewardAdmin, setIsRewardAdmin] = useState(false);
   const [rewardLogin, setRewardLogin] = useState({ id: "", password: "" });
   const [rewardLoginMessage, setRewardLoginMessage] = useState("");
@@ -671,17 +874,73 @@ export default function Home() {
     setProcessFilter((current) => ({ ...current, [key]: value }));
   }
 
+  async function saveCsvFiles() {
+    setIsCsvSaving(true);
+    setCsvMessage("");
+    const files = buildCsvFiles(cases, processItems);
+    const encoder = new TextEncoder();
+
+    try {
+      const picker = (window as unknown as {
+        showDirectoryPicker?: () => Promise<{
+          getFileHandle: (
+            name: string,
+            options: { create: boolean },
+          ) => Promise<{ createWritable: () => Promise<{ write: (data: Uint8Array) => Promise<void>; close: () => Promise<void> }> }>;
+        }>;
+      }).showDirectoryPicker;
+
+      if (picker) {
+        const directory = await picker();
+        for (const file of files) {
+          const handle = await directory.getFileHandle(file.name, { create: true });
+          const writable = await handle.createWritable();
+          await writable.write(encoder.encode(`\uFEFF${csvText(file.rows)}`));
+          await writable.close();
+        }
+        setCsvMessage("CSVを保存しました。Googleスプレッドシートへ取り込めます。");
+        return;
+      }
+
+      for (const file of files) {
+        const blob = new Blob([`\uFEFF${csvText(file.rows)}`], {
+          type: "text/csv;charset=utf-8",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = file.name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        await new Promise((resolve) => window.setTimeout(resolve, 120));
+      }
+      setCsvMessage("CSVをダウンロードしました。保存先に移動してGoogleスプレッドシートへ取り込めます。");
+    } catch (error) {
+      setCsvMessage(error instanceof Error ? error.message : "CSV保存を中止しました。");
+    } finally {
+      setIsCsvSaving(false);
+    }
+  }
+
   return (
     <main>
       <header>
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 18:12 担当者スマホ横スクロール対応</p>
+          <p className="version-note">最新版: 2026/08/14 18:30 CSV保管対応</p>
+          {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
-        <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
-          保存先を開く
-        </a>
+        <div className="header-actions">
+          <button onClick={() => void saveCsvFiles()} type="button" disabled={isCsvSaving}>
+            {isCsvSaving ? "CSV保存中" : "CSVで保管"}
+          </button>
+          <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
+            保存先を開く
+          </a>
+        </div>
       </header>
 
       <nav className="tabs" aria-label="表示切替">

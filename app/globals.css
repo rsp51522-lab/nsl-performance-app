@@ -71,6 +71,14 @@ header p {
   margin-top: 4px;
 }
 
+.header-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .version-note {
   color: #a7f3d0;
   font-size: 12px;
@@ -94,6 +102,11 @@ button,
   cursor: pointer;
   padding: 9px 12px;
   text-decoration: none;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 button.secondary {
@@ -565,6 +578,11 @@ td.money {
   header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .header-actions {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   section,
