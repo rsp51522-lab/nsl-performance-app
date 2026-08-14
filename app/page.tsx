@@ -35,6 +35,9 @@ const moneyHeaders = new Set([
   "担当申込金額",
   "担当入金金額",
   "未入金",
+  "浅野報酬",
+  "鹿島報酬",
+  "川西報酬",
 ]);
 const initialForm: CaseRecord = {
   会社名: "",
@@ -85,6 +88,20 @@ function monthKey(value: string | number) {
 function calcDays(hours: string | number | boolean | string[]) {
   const value = Number(hours) || 0;
   return value ? Math.ceil(value / 8) : "";
+}
+
+function staffApplicationReward(row: CaseRecord, name: string) {
+  const amount = Number(row["税抜金額"]) || 0;
+  let reward = 0;
+
+  if (row["営業"] === name) reward += amount;
+  if (row["開発"] === name) {
+    if (name === "鹿島") reward += amount * 0.65;
+    if (name === "川西") reward += amount * 0.35;
+  }
+  if (row["サブ"] === name) reward += amount * 0.35;
+
+  return Math.round(reward);
 }
 
 function statusFor(item: ProcessRecord) {
@@ -285,22 +302,38 @@ export default function Home() {
         }
 
         if (isSales) {
-          app += amount;
+          app += staffApplicationReward(row, name);
           pay += paid;
         }
         if (isDeveloper) {
-          app += amount * devRate;
+          if (!isSales) app += staffApplicationReward(row, name);
           pay += paid * devRate;
           dev += 1;
         }
         if (isSub) {
-          app += amount * subRate;
+          if (!isSales && !isDeveloper) app += staffApplicationReward(row, name);
           pay += paid * subRate;
           sub += 1;
         }
       }
       return [name, appCount, app, payCount, pay, dev, sub];
     });
+  }, [cases]);
+
+  const rewardDetailRows = useMemo(() => {
+    return cases
+      .filter((row) => row["会社名"] || row["サービス"] || Number(row["税抜金額"]))
+      .map((row) => [
+        row["会社名"] || "",
+        row["サービス"] || "",
+        row["税抜金額"] || 0,
+        row["営業"] || "",
+        row["開発"] || "",
+        row["サブ"] || "",
+        staffApplicationReward(row, "浅野"),
+        staffApplicationReward(row, "鹿島"),
+        staffApplicationReward(row, "川西"),
+      ]);
   }, [cases]);
 
   const filteredCases = cases.filter((row) =>
@@ -538,7 +571,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 14:55 税抜担当者計算</p>
+          <p className="version-note">最新版: 2026/08/14 15:10 担当者報酬一覧</p>
         </div>
         <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
           保存先を開く
@@ -814,20 +847,40 @@ export default function Home() {
       )}
 
       {view === "people" && (
-        <Panel title="担当者">
-          <SimpleTable
-            headers={[
-              "担当者",
-              "担当申込件数",
-              "担当申込金額",
-              "担当入金件数",
-              "担当入金金額",
-              "開発件数",
-              "サブ件数",
-            ]}
-            rows={peopleRows}
-          />
-        </Panel>
+        <>
+          <Panel title="担当者">
+            <SimpleTable
+              headers={[
+                "担当者",
+                "担当申込件数",
+                "担当申込金額",
+                "担当入金件数",
+                "担当入金金額",
+                "開発件数",
+                "サブ件数",
+              ]}
+              rows={peopleRows}
+            />
+          </Panel>
+          <Panel title="担当者報酬一覧">
+            <div className="table-wrap">
+              <SimpleTable
+                headers={[
+                  "会社名",
+                  "サービス",
+                  "税抜金額",
+                  "営業",
+                  "開発",
+                  "サブ",
+                  "浅野報酬",
+                  "鹿島報酬",
+                  "川西報酬",
+                ]}
+                rows={rewardDetailRows}
+              />
+            </div>
+          </Panel>
+        </>
       )}
 
       {selectedProcess && (
