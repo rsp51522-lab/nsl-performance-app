@@ -329,6 +329,13 @@ section {
   text-align: right;
 }
 
+.table-action {
+  border-radius: 5px;
+  font-size: 11px;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
 .form-actions {
   align-items: center;
   display: flex;

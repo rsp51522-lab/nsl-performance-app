@@ -444,10 +444,12 @@ export default function Home() {
   const [selectedProcess, setSelectedProcess] = useState<ProcessItem | null>(null);
   const [showCaseForm, setShowCaseForm] = useState(false);
   const [form, setForm] = useState<CaseRecord>(initialForm);
+  const [editingCase, setEditingCase] = useState<CaseRecord | null>(null);
   const [message, setMessage] = useState("");
   const [processMessage, setProcessMessage] = useState("");
   const [csvMessage, setCsvMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isCaseEditSaving, setIsCaseEditSaving] = useState(false);
   const [isProcessSaving, setIsProcessSaving] = useState(false);
   const [isCsvSaving, setIsCsvSaving] = useState(false);
   const [isRewardAdmin, setIsRewardAdmin] = useState(false);
@@ -660,8 +662,8 @@ export default function Home() {
     "納期判定",
   ];
 
-  function updateForm(key: string, value: string) {
-    const next = { ...form, [key]: value };
+  function updateCaseRecord(record: CaseRecord, key: string, value: string) {
+    const next = { ...record, [key]: value };
     if (key === "税抜単価" || key === "個数") {
       const subtotal = (Number(next["税抜単価"]) || 0) * (Number(next["個数"]) || 0);
       next["税抜金額"] = subtotal || "";
@@ -669,7 +671,20 @@ export default function Home() {
       next["アポ金額"] = subtotal || "";
       next["申込金額"] = subtotal ? Math.round(subtotal * 1.1) : "";
     }
-    setForm(next);
+    return next;
+  }
+
+  function updateForm(key: string, value: string) {
+    setForm((current) => updateCaseRecord(current, key, value));
+  }
+
+  function updateEditingCase(key: string, value: string) {
+    setEditingCase((current) => (current ? updateCaseRecord(current, key, value) : current));
+  }
+
+  function openCaseEdit(row: CaseRecord) {
+    setEditingCase({ ...initialForm, ...row });
+    setMessage("");
   }
 
   async function loginRewardAdmin(event: FormEvent<HTMLFormElement>) {
@@ -803,6 +818,46 @@ export default function Home() {
     }
   }
 
+  async function saveCaseEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingCase) return;
+    const id = Number(editingCase.id);
+    if (!id) {
+      setMessage("案件データの読み込み後に修正してください。");
+      return;
+    }
+    if (!editingCase["会社名"] && !editingCase["代表"]) {
+      setMessage("会社名または代表を入力してください。");
+      return;
+    }
+
+    setIsCaseEditSaving(true);
+    setMessage("");
+    const payload = {
+      id,
+      ...Object.fromEntries(caseHeaders.map((header) => [header, editingCase[header] ?? ""])),
+    };
+
+    try {
+      const response = await fetch("/api/cases", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ case: payload }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "保存できませんでした。");
+      setCases((current) =>
+        current.map((item) => (item.id === result.case.id ? result.case : item)),
+      );
+      setEditingCase(null);
+      setMessage("案件を修正しました。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "保存できませんでした。");
+    } finally {
+      setIsCaseEditSaving(false);
+    }
+  }
+
   async function saveCaseAssignment(row: CaseRecord, key: string, value: string) {
     if (rateHeaders.has(key) && !isRewardAdmin) {
       setMessage("報酬率の変更には管理者ログインが必要です。");
@@ -930,7 +985,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 18:30 CSV保管対応</p>
+          <p className="version-note">最新版: 2026/08/14 19:01 案件修正ボタン対応</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
@@ -1059,6 +1114,58 @@ export default function Home() {
             </Panel>
           )}
 
+          {editingCase && (
+            <Panel
+              action={
+                <button
+                  className="secondary"
+                  onClick={() => setEditingCase(null)}
+                  type="button"
+                >
+                  閉じる
+                </button>
+              }
+              title={`案件修正 NO ${String(editingCase["NO"] || "")} ${String(editingCase["会社名"] || "")}`}
+            >
+              <form className="case-form" onSubmit={saveCaseEdit}>
+                <Field label="会社名" onChange={updateEditingCase} value={editingCase["会社名"]} />
+                <Field label="代表" onChange={updateEditingCase} value={editingCase["代表"]} />
+                <Field label="アポ日" onChange={updateEditingCase} type="date" value={editingCase["アポ日"]} />
+                <Field label="申込日" onChange={updateEditingCase} type="date" value={editingCase["申込日"]} />
+                <Field label="入金日" onChange={updateEditingCase} type="date" value={editingCase["入金日"]} />
+                <SelectField label="営業" onChange={updateEditingCase} options={["浅野", "鹿島", "川西", ""]} value={editingCase["営業"]} />
+                <SelectField label="開発" onChange={updateEditingCase} options={["鹿島", "川西", "浅野", ""]} value={editingCase["開発"]} />
+                <SelectField label="サブ" onChange={updateEditingCase} options={["", "鹿島", "川西", "浅野"]} value={editingCase["サブ"]} />
+                {isRewardAdmin && (
+                  <>
+                    <Field label="営業報酬率" onChange={updateEditingCase} type="number" value={editingCase["営業報酬率"]} />
+                    <Field label="開発報酬率" onChange={updateEditingCase} type="number" value={editingCase["開発報酬率"]} />
+                    <Field label="サブ報酬率" onChange={updateEditingCase} type="number" value={editingCase["サブ報酬率"]} />
+                  </>
+                )}
+                <SelectField label="申込状況" onChange={updateEditingCase} options={["", "済"]} value={editingCase["申込状況"]} />
+                <SelectField label="入金状況" onChange={updateEditingCase} options={["", "済"]} value={editingCase["入金状況"]} />
+                <Field label="サービス" onChange={updateEditingCase} value={editingCase["サービス"]} />
+                <Field label="税抜単価" onChange={updateEditingCase} type="number" value={editingCase["税抜単価"]} />
+                <Field label="個数" onChange={updateEditingCase} type="number" value={editingCase["個数"]} />
+                <Field label="申込金額" onChange={updateEditingCase} type="number" value={editingCase["申込金額"]} />
+                <Field label="入金金額" onChange={updateEditingCase} type="number" value={editingCase["入金金額"]} />
+                <div className="form-actions">
+                  <button disabled={isCaseEditSaving} type="submit">
+                    {isCaseEditSaving ? "保存中" : "修正を保存"}
+                  </button>
+                  <button
+                    className="secondary"
+                    onClick={() => setEditingCase(null)}
+                    type="button"
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </form>
+            </Panel>
+          )}
+
           <section className="admin-panel">
             {isRewardAdmin ? (
               <>
@@ -1107,6 +1214,7 @@ export default function Home() {
               <table>
                 <thead>
                   <tr>
+                    <th>操作</th>
                     {visibleCaseHeaders.map((header) => (
                       <th key={header}>{header}</th>
                     ))}
@@ -1115,6 +1223,15 @@ export default function Home() {
                 <tbody>
                   {filteredCases.map((row, rowIndex) => (
                     <tr key={String(row.id || row["NO"] || rowIndex)}>
+                      <td>
+                        <button
+                          className="table-action"
+                          onClick={() => openCaseEdit(row)}
+                          type="button"
+                        >
+                          修正
+                        </button>
+                      </td>
                       {visibleCaseHeaders.map((header) => (
                         <td
                           className={moneyHeaders.has(header) ? "money" : ""}
