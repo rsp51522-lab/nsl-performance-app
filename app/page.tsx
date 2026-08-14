@@ -384,10 +384,7 @@ export default function Home() {
     setProcessMessage("PDFを読み込んでいます。");
     try {
       const pdfjs: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
-      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-        "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
-        import.meta.url,
-      ).toString();
+      pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
       const bytes = new Uint8Array(await file.arrayBuffer());
       const pdf = await pdfjs.getDocument({ data: bytes }).promise;
       const pages: string[] = [];
@@ -530,7 +527,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 12:25 PDF読込対応</p>
+          <p className="version-note">最新版: 2026/08/14 12:30 PDF読込修正</p>
         </div>
         <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
           保存先を開く
@@ -994,6 +991,20 @@ function estimateHours(text: string) {
 }
 
 function extractWorkContent(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const quoteItems = [
+    ...normalized.matchAll(/(.+?)\s+(?:セット|式|個|件)\s+\d+(?:\.\d+)?\s+¥[0-9,]+\s+¥[0-9,]+/g),
+  ]
+    .map((match) =>
+      match[1]
+        .replace(/^.*[）)]\s*/, "")
+        .replace(/^(商品名|単位|数量|単価|金額|税抜|\s)+/, "")
+        .trim(),
+    )
+    .filter((item) => item && !/小計|消費税|合計|割引/.test(item));
+
+  if (quoteItems.length) return [...new Set(quoteItems)].join(" / ");
+
   return text
     .split(/\n|。/)
     .map((line) => line.trim())
