@@ -183,7 +183,7 @@ function SimpleTable({
       </thead>
       <tbody>
         {rows.map((row, rowIndex) => (
-          <tr key={rowIndex}>
+          <tr className={row[0] === "合計" ? "total-row" : ""} key={rowIndex}>
             {row.map((cell, index) => (
               <td
                 className={moneyHeaders.has(headers[index]) ? "money" : ""}
@@ -278,7 +278,7 @@ export default function Home() {
   }, [cases]);
 
   const peopleRows = useMemo(() => {
-    return ["浅野", "鹿島", "川西", "未設定"].map((name) => {
+    const rows = ["浅野", "鹿島", "川西", "未設定"].map((name) => {
       let appCount = 0;
       let payCount = 0;
       let app = 0;
@@ -324,10 +324,23 @@ export default function Home() {
       }
       return [name, appCount, app, payCount, pay, dev, sub];
     });
+
+    return [
+      ...rows,
+      [
+        "合計",
+        rows.reduce((sum, row) => sum + Number(row[1] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[2] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[3] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[4] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[5] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[6] || 0), 0),
+      ],
+    ];
   }, [cases]);
 
   const rewardDetailRows = useMemo(() => {
-    return cases
+    const rows = cases
       .filter((row) => row["会社名"] || row["サービス"] || Number(row["税抜金額"]))
       .map((row) => [
         row["会社名"] || "",
@@ -340,6 +353,21 @@ export default function Home() {
         staffApplicationReward(row, "鹿島"),
         staffApplicationReward(row, "川西"),
       ]);
+
+    return [
+      ...rows,
+      [
+        "合計",
+        "",
+        rows.reduce((sum, row) => sum + Number(row[2] || 0), 0),
+        "",
+        "",
+        "",
+        rows.reduce((sum, row) => sum + Number(row[6] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[7] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[8] || 0), 0),
+      ],
+    ];
   }, [cases]);
 
   const filteredCases = cases.filter((row) =>
@@ -577,7 +605,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 15:15 鹿島計算式修正</p>
+          <p className="version-note">最新版: 2026/08/14 15:20 報酬合計行追加</p>
         </div>
         <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
           保存先を開く

@@ -416,6 +416,11 @@ td.money {
   text-align: right;
 }
 
+.total-row td {
+  background: #f0fdfa;
+  font-weight: 800;
+}
+
 .status {
   border-radius: 999px;
   display: inline-block;
