@@ -396,11 +396,18 @@ export default function Home() {
       }
 
       const extracted = pages.join("\n").trim();
+      const quoteItems = extractQuoteItems(extracted);
+      const quoteSummary = formatQuoteItems(quoteItems);
       const text =
-        extracted ||
+        quoteSummary ||
+        (extracted
+          ? "商品名・単位・数量を自動抽出できませんでした。必要に応じて手入力してください。"
+          : "") ||
         `PDFを添付しました: ${file.name}\nこのPDFからは文字を自動抽出できませんでした。画像PDFの場合は、作業内容を手入力してください。`;
-      const hours = estimateHours(text);
-      const content = extractWorkContent(extracted);
+      const hours = estimateHours(extracted);
+      const content = quoteItems.length
+        ? quoteItems.map((item) => item.name).join(" / ")
+        : extractWorkContent(extracted);
       updateSelectedPatch({
         見積PDF名: file.name,
         見積読込内容: text,
@@ -527,7 +534,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 12:30 PDF読込修正</p>
+          <p className="version-note">最新版: 2026/08/14 13:25 PDF明細読込</p>
         </div>
         <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
           保存先を開く
@@ -990,20 +997,48 @@ function estimateHours(text: string) {
   return 0;
 }
 
-function extractWorkContent(text: string) {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  const quoteItems = [
-    ...normalized.matchAll(/(.+?)\s+(?:セット|式|個|件)\s+\d+(?:\.\d+)?\s+¥[0-9,]+\s+¥[0-9,]+/g),
-  ]
-    .map((match) =>
-      match[1]
-        .replace(/^.*[）)]\s*/, "")
-        .replace(/^(商品名|単位|数量|単価|金額|税抜|\s)+/, "")
-        .trim(),
-    )
-    .filter((item) => item && !/小計|消費税|合計|割引/.test(item));
+function extractQuoteItems(text: string) {
+  if (!text.trim()) return [];
 
-  if (quoteItems.length) return [...new Set(quoteItems)].join(" / ");
+  const normalized = text.normalize("NFKC").replace(/\s+/g, " ").trim();
+  const headerIndex = normalized.search(/商品名\s+単位\s+数量/);
+  const tableText =
+    headerIndex >= 0
+      ? normalized
+          .slice(headerIndex)
+          .replace(/^.*?商品名\s+単位\s+数量\s+単価\s*\(?税抜\)?\s+金額\s*\(?税抜\)?\s*/, "")
+      : normalized;
+  const endIndex = tableText.search(/\s+(?:小計|消費税|割引|合計金額|合計)\s*/);
+  const target = endIndex >= 0 ? tableText.slice(0, endIndex) : tableText;
+  const units = ["セット", "ファイル", "件", "式", "個", "時間", "枚", "本"];
+  const unitPattern = units.join("|");
+  const itemMatches = [
+    ...target.matchAll(
+      new RegExp(`(.+?)\\s+(${unitPattern})\\s+([0-9]+(?:\\.[0-9]+)?)\\s+(?:¥|￥)[0-9,]+\\s+(?:¥|￥)[0-9,]+`, "g"),
+    ),
+  ];
+
+  return itemMatches
+    .map((match) => ({
+      name: match[1]
+        .replace(/^.*商品名\s+単位\s+数量.*?金額\s*\(?税抜\)?\s*/, "")
+        .replace(/\s+/g, "")
+        .trim(),
+      unit: match[2],
+      quantity: match[3],
+    }))
+    .filter((item) => item.name && !/小計|消費税|合計|割引/.test(item.name));
+}
+
+function formatQuoteItems(items: ReturnType<typeof extractQuoteItems>) {
+  if (!items.length) return "";
+  const lines = items.map((item) => `${item.name} / ${item.unit} / ${item.quantity}`);
+  return ["商品名 / 単位 / 数量", ...lines].join("\n");
+}
+
+function extractWorkContent(text: string) {
+  const quoteItems = extractQuoteItems(text);
+  if (quoteItems.length) return quoteItems.map((item) => item.name).join(" / ");
 
   return text
     .split(/\n|。/)
