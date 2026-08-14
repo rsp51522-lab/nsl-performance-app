@@ -213,6 +213,13 @@ section {
   overflow: auto;
 }
 
+.case-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
 .filter-bar {
   border-bottom: 1px solid var(--line);
   display: flex;

@@ -195,6 +195,7 @@ export default function Home() {
   const [processItems, setProcessItems] = useState<ProcessItem[]>(initialProcessItems());
   const [processSteps, setProcessSteps] = useState(defaultSteps);
   const [selectedProcess, setSelectedProcess] = useState<ProcessItem | null>(null);
+  const [showCaseForm, setShowCaseForm] = useState(false);
   const [form, setForm] = useState<CaseRecord>(initialForm);
   const [message, setMessage] = useState("");
   const [processMessage, setProcessMessage] = useState("");
@@ -443,6 +444,7 @@ export default function Home() {
       if (!response.ok) throw new Error(result.error || "保存できませんでした。");
       setCases((current) => [...current, result.case]);
       setForm(initialForm);
+      setShowCaseForm(false);
       setMessage("新規案件を追加しました。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存できませんでした。");
@@ -588,31 +590,56 @@ export default function Home() {
 
       {view === "cases" && (
         <>
-          <Panel title="新規案件追加">
-            <form className="case-form" onSubmit={addCase}>
-              <Field label="会社名" onChange={updateForm} value={form["会社名"]} />
-              <Field label="代表" onChange={updateForm} value={form["代表"]} />
-              <Field label="アポ日" onChange={updateForm} type="date" value={form["アポ日"]} />
-              <Field label="申込日" onChange={updateForm} type="date" value={form["申込日"]} />
-              <Field label="入金日" onChange={updateForm} type="date" value={form["入金日"]} />
-              <SelectField label="営業" onChange={updateForm} options={["浅野", "鹿島", "川西", ""]} value={form["営業"]} />
-              <SelectField label="開発" onChange={updateForm} options={["鹿島", "川西", "浅野", ""]} value={form["開発"]} />
-              <SelectField label="サブ" onChange={updateForm} options={["", "鹿島", "川西", "浅野"]} value={form["サブ"]} />
-              <SelectField label="申込状況" onChange={updateForm} options={["", "済"]} value={form["申込状況"]} />
-              <SelectField label="入金状況" onChange={updateForm} options={["", "済"]} value={form["入金状況"]} />
-              <Field label="サービス" onChange={updateForm} value={form["サービス"]} />
-              <Field label="税抜単価" onChange={updateForm} type="number" value={form["税抜単価"]} />
-              <Field label="個数" onChange={updateForm} type="number" value={form["個数"]} />
-              <Field label="申込金額" onChange={updateForm} type="number" value={form["申込金額"]} />
-              <Field label="入金金額" onChange={updateForm} type="number" value={form["入金金額"]} />
-              <div className="form-actions">
-                <button disabled={isSaving} type="submit">
-                  {isSaving ? "保存中" : "案件追加"}
+          <section className="case-toolbar">
+            <button
+              onClick={() => {
+                setShowCaseForm(true);
+                setMessage("");
+              }}
+              type="button"
+            >
+              案件追加
+            </button>
+            {message && <span className="message">{message}</span>}
+          </section>
+
+          {showCaseForm && (
+            <Panel
+              action={
+                <button
+                  className="secondary"
+                  onClick={() => setShowCaseForm(false)}
+                  type="button"
+                >
+                  閉じる
                 </button>
-                {message && <span className="message">{message}</span>}
-              </div>
-            </form>
-          </Panel>
+              }
+              title="新規案件追加"
+            >
+              <form className="case-form" onSubmit={addCase}>
+                <Field label="会社名" onChange={updateForm} value={form["会社名"]} />
+                <Field label="代表" onChange={updateForm} value={form["代表"]} />
+                <Field label="アポ日" onChange={updateForm} type="date" value={form["アポ日"]} />
+                <Field label="申込日" onChange={updateForm} type="date" value={form["申込日"]} />
+                <Field label="入金日" onChange={updateForm} type="date" value={form["入金日"]} />
+                <SelectField label="営業" onChange={updateForm} options={["浅野", "鹿島", "川西", ""]} value={form["営業"]} />
+                <SelectField label="開発" onChange={updateForm} options={["鹿島", "川西", "浅野", ""]} value={form["開発"]} />
+                <SelectField label="サブ" onChange={updateForm} options={["", "鹿島", "川西", "浅野"]} value={form["サブ"]} />
+                <SelectField label="申込状況" onChange={updateForm} options={["", "済"]} value={form["申込状況"]} />
+                <SelectField label="入金状況" onChange={updateForm} options={["", "済"]} value={form["入金状況"]} />
+                <Field label="サービス" onChange={updateForm} value={form["サービス"]} />
+                <Field label="税抜単価" onChange={updateForm} type="number" value={form["税抜単価"]} />
+                <Field label="個数" onChange={updateForm} type="number" value={form["個数"]} />
+                <Field label="申込金額" onChange={updateForm} type="number" value={form["申込金額"]} />
+                <Field label="入金金額" onChange={updateForm} type="number" value={form["入金金額"]} />
+                <div className="form-actions">
+                  <button disabled={isSaving} type="submit">
+                    {isSaving ? "保存中" : "案件追加"}
+                  </button>
+                </div>
+              </form>
+            </Panel>
+          )}
 
           <Panel
             action={
