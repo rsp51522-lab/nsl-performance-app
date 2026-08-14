@@ -684,6 +684,7 @@ export default function Home() {
 
   function openCaseEdit(row: CaseRecord) {
     setEditingCase({ ...initialForm, ...row });
+    setShowCaseForm(false);
     setMessage("");
   }
 
@@ -985,7 +986,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 19:01 案件修正ボタン対応</p>
+          <p className="version-note">最新版: 2026/08/14 19:12 案件修正ウィンドウ対応</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
@@ -1108,58 +1109,6 @@ export default function Home() {
                 <div className="form-actions">
                   <button disabled={isSaving} type="submit">
                     {isSaving ? "保存中" : "案件追加"}
-                  </button>
-                </div>
-              </form>
-            </Panel>
-          )}
-
-          {editingCase && (
-            <Panel
-              action={
-                <button
-                  className="secondary"
-                  onClick={() => setEditingCase(null)}
-                  type="button"
-                >
-                  閉じる
-                </button>
-              }
-              title={`案件修正 NO ${String(editingCase["NO"] || "")} ${String(editingCase["会社名"] || "")}`}
-            >
-              <form className="case-form" onSubmit={saveCaseEdit}>
-                <Field label="会社名" onChange={updateEditingCase} value={editingCase["会社名"]} />
-                <Field label="代表" onChange={updateEditingCase} value={editingCase["代表"]} />
-                <Field label="アポ日" onChange={updateEditingCase} type="date" value={editingCase["アポ日"]} />
-                <Field label="申込日" onChange={updateEditingCase} type="date" value={editingCase["申込日"]} />
-                <Field label="入金日" onChange={updateEditingCase} type="date" value={editingCase["入金日"]} />
-                <SelectField label="営業" onChange={updateEditingCase} options={["浅野", "鹿島", "川西", ""]} value={editingCase["営業"]} />
-                <SelectField label="開発" onChange={updateEditingCase} options={["鹿島", "川西", "浅野", ""]} value={editingCase["開発"]} />
-                <SelectField label="サブ" onChange={updateEditingCase} options={["", "鹿島", "川西", "浅野"]} value={editingCase["サブ"]} />
-                {isRewardAdmin && (
-                  <>
-                    <Field label="営業報酬率" onChange={updateEditingCase} type="number" value={editingCase["営業報酬率"]} />
-                    <Field label="開発報酬率" onChange={updateEditingCase} type="number" value={editingCase["開発報酬率"]} />
-                    <Field label="サブ報酬率" onChange={updateEditingCase} type="number" value={editingCase["サブ報酬率"]} />
-                  </>
-                )}
-                <SelectField label="申込状況" onChange={updateEditingCase} options={["", "済"]} value={editingCase["申込状況"]} />
-                <SelectField label="入金状況" onChange={updateEditingCase} options={["", "済"]} value={editingCase["入金状況"]} />
-                <Field label="サービス" onChange={updateEditingCase} value={editingCase["サービス"]} />
-                <Field label="税抜単価" onChange={updateEditingCase} type="number" value={editingCase["税抜単価"]} />
-                <Field label="個数" onChange={updateEditingCase} type="number" value={editingCase["個数"]} />
-                <Field label="申込金額" onChange={updateEditingCase} type="number" value={editingCase["申込金額"]} />
-                <Field label="入金金額" onChange={updateEditingCase} type="number" value={editingCase["入金金額"]} />
-                <div className="form-actions">
-                  <button disabled={isCaseEditSaving} type="submit">
-                    {isCaseEditSaving ? "保存中" : "修正を保存"}
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={() => setEditingCase(null)}
-                    type="button"
-                  >
-                    キャンセル
                   </button>
                 </div>
               </form>
@@ -1418,6 +1367,63 @@ export default function Home() {
             </div>
           </Panel>
         </>
+      )}
+
+      {editingCase && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <section className="modal case-edit-modal">
+            <div className="modal-head">
+              <div>
+                <h2>
+                  案件修正 NO {String(editingCase["NO"] || "")}{" "}
+                  {String(editingCase["会社名"] || "")}
+                </h2>
+                <p className="note">修正後は上部または下部の保存ボタンを押してください</p>
+              </div>
+              <div className="modal-head-actions">
+                <button disabled={isCaseEditSaving} form="case-edit-form" type="submit">
+                  {isCaseEditSaving ? "保存中" : "修正を保存"}
+                </button>
+                <button className="secondary" onClick={() => setEditingCase(null)} type="button">
+                  閉じる
+                </button>
+              </div>
+            </div>
+
+            <form className="case-form modal-case-form" id="case-edit-form" onSubmit={saveCaseEdit}>
+              <Field label="会社名" onChange={updateEditingCase} value={editingCase["会社名"]} />
+              <Field label="代表" onChange={updateEditingCase} value={editingCase["代表"]} />
+              <Field label="アポ日" onChange={updateEditingCase} type="date" value={editingCase["アポ日"]} />
+              <Field label="申込日" onChange={updateEditingCase} type="date" value={editingCase["申込日"]} />
+              <Field label="入金日" onChange={updateEditingCase} type="date" value={editingCase["入金日"]} />
+              <SelectField label="営業" onChange={updateEditingCase} options={["浅野", "鹿島", "川西", ""]} value={editingCase["営業"]} />
+              <SelectField label="開発" onChange={updateEditingCase} options={["鹿島", "川西", "浅野", ""]} value={editingCase["開発"]} />
+              <SelectField label="サブ" onChange={updateEditingCase} options={["", "鹿島", "川西", "浅野"]} value={editingCase["サブ"]} />
+              {isRewardAdmin && (
+                <>
+                  <Field label="営業報酬率" onChange={updateEditingCase} type="number" value={editingCase["営業報酬率"]} />
+                  <Field label="開発報酬率" onChange={updateEditingCase} type="number" value={editingCase["開発報酬率"]} />
+                  <Field label="サブ報酬率" onChange={updateEditingCase} type="number" value={editingCase["サブ報酬率"]} />
+                </>
+              )}
+              <SelectField label="申込状況" onChange={updateEditingCase} options={["", "済"]} value={editingCase["申込状況"]} />
+              <SelectField label="入金状況" onChange={updateEditingCase} options={["", "済"]} value={editingCase["入金状況"]} />
+              <Field label="サービス" onChange={updateEditingCase} value={editingCase["サービス"]} />
+              <Field label="税抜単価" onChange={updateEditingCase} type="number" value={editingCase["税抜単価"]} />
+              <Field label="個数" onChange={updateEditingCase} type="number" value={editingCase["個数"]} />
+              <Field label="申込金額" onChange={updateEditingCase} type="number" value={editingCase["申込金額"]} />
+              <Field label="入金金額" onChange={updateEditingCase} type="number" value={editingCase["入金金額"]} />
+              <div className="form-actions">
+                <button disabled={isCaseEditSaving} type="submit">
+                  {isCaseEditSaving ? "保存中" : "修正を保存"}
+                </button>
+                <button className="secondary" onClick={() => setEditingCase(null)} type="button">
+                  キャンセル
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
       )}
 
       {selectedProcess && (

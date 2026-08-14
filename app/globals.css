@@ -388,6 +388,14 @@ section {
   padding: 16px;
 }
 
+.modal-head-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .detail-grid {
   display: grid;
   gap: 12px;
@@ -613,6 +621,16 @@ td.money {
   .detail-grid,
   .step-grid {
     grid-template-columns: 1fr;
+  }
+
+  .modal-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .modal-head-actions {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .sticky-staff-table {
