@@ -226,6 +226,36 @@ section {
   margin-bottom: 16px;
 }
 
+.admin-panel {
+  align-items: center;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+}
+
+.admin-panel > span:first-child,
+.admin-login span {
+  color: var(--navy);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-login {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-login input {
+  min-width: 160px;
+}
+
 .filter-bar {
   border-bottom: 1px solid var(--line);
   display: flex;

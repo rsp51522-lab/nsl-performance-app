@@ -133,22 +133,6 @@ function staffApplicationReward(row: CaseRecord, name: string) {
   return Math.round(reward);
 }
 
-function displayRate(value: string | number) {
-  return value === "" || value === undefined || value === null ? "" : `${value}%`;
-}
-
-function rateValueFor(
-  row: CaseRecord,
-  key: "営業報酬率" | "開発報酬率" | "サブ報酬率",
-  role: "sales" | "developer" | "sub",
-  person: string,
-) {
-  if (!person) return "";
-  const raw = row[key];
-  if (raw !== "" && raw !== undefined && raw !== null) return raw;
-  return Math.round(defaultRewardRate(row, role, person) * 100);
-}
-
 function statusFor(item: ProcessRecord) {
   if (item["完了"] === true || item["作業状況"] === "完了") return "納品済";
   const due = dateValue(item["最終納品予定"]);
@@ -263,6 +247,9 @@ export default function Home() {
   const [processMessage, setProcessMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isProcessSaving, setIsProcessSaving] = useState(false);
+  const [isRewardAdmin, setIsRewardAdmin] = useState(false);
+  const [rewardLogin, setRewardLogin] = useState({ id: "", password: "" });
+  const [rewardLoginMessage, setRewardLoginMessage] = useState("");
 
   useEffect(() => {
     fetch("/api/cases")
@@ -277,6 +264,13 @@ export default function Home() {
       .then((payload) => {
         if (payload?.items) setProcessItems(payload.items);
         if (payload?.steps) setProcessSteps(payload.steps);
+      })
+      .catch(() => undefined);
+
+    fetch("/api/reward-auth")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (payload?.authenticated) setIsRewardAdmin(true);
       })
       .catch(() => undefined);
   }, []);
@@ -393,9 +387,6 @@ export default function Home() {
         row["営業"] || "",
         row["開発"] || "",
         row["サブ"] || "",
-        displayRate(rateValueFor(row, "営業報酬率", "sales", String(row["営業"] || ""))),
-        displayRate(rateValueFor(row, "開発報酬率", "developer", String(row["開発"] || ""))),
-        displayRate(rateValueFor(row, "サブ報酬率", "sub", String(row["サブ"] || ""))),
         staffApplicationReward(row, "浅野"),
         staffApplicationReward(row, "鹿島"),
         staffApplicationReward(row, "川西"),
@@ -410,18 +401,19 @@ export default function Home() {
         "",
         "",
         "",
-        "",
-        "",
-        "",
-        rows.reduce((sum, row) => sum + Number(row[9] || 0), 0),
-        rows.reduce((sum, row) => sum + Number(row[10] || 0), 0),
-        rows.reduce((sum, row) => sum + Number(row[11] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[6] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[7] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[8] || 0), 0),
       ],
     ];
   }, [cases]);
 
   const filteredCases = cases.filter((row) =>
     JSON.stringify(row).toLowerCase().includes(search.toLowerCase()),
+  );
+  const visibleCaseHeaders = useMemo(
+    () => (isRewardAdmin ? caseHeaders : caseHeaders.filter((header) => !rateHeaders.has(header))),
+    [isRewardAdmin],
   );
   const paidCaseKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -475,6 +467,32 @@ export default function Home() {
       next["申込金額"] = subtotal ? Math.round(subtotal * 1.1) : "";
     }
     setForm(next);
+  }
+
+  async function loginRewardAdmin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setRewardLoginMessage("");
+    try {
+      const response = await fetch("/api/reward-auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(rewardLogin),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "ログインできませんでした。");
+      setIsRewardAdmin(true);
+      setRewardLogin({ id: "", password: "" });
+      setRewardLoginMessage("報酬率を変更できます。");
+    } catch (error) {
+      setIsRewardAdmin(false);
+      setRewardLoginMessage(error instanceof Error ? error.message : "ログインできませんでした。");
+    }
+  }
+
+  async function logoutRewardAdmin() {
+    await fetch("/api/reward-auth", { method: "DELETE" }).catch(() => undefined);
+    setIsRewardAdmin(false);
+    setRewardLoginMessage("報酬率変更を終了しました。");
   }
 
   function updateSelected(key: string, value: string | boolean | string[]) {
@@ -583,6 +601,10 @@ export default function Home() {
   }
 
   async function saveCaseAssignment(row: CaseRecord, key: string, value: string) {
+    if (rateHeaders.has(key) && !isRewardAdmin) {
+      setMessage("報酬率の変更には管理者ログインが必要です。");
+      return;
+    }
     const id = Number(row.id);
     const next = { ...row, [key]: value };
     setCases((current) => current.map((item) => (item === row || item.id === row.id ? next : item)));
@@ -655,7 +677,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 15:45 案件別報酬率対応</p>
+          <p className="version-note">最新版: 2026/08/14 15:37 報酬率管理者制限</p>
         </div>
         <a className="button" href={sheetUrl} rel="noreferrer" target="_blank">
           保存先を開く
@@ -755,9 +777,13 @@ export default function Home() {
                 <SelectField label="営業" onChange={updateForm} options={["浅野", "鹿島", "川西", ""]} value={form["営業"]} />
                 <SelectField label="開発" onChange={updateForm} options={["鹿島", "川西", "浅野", ""]} value={form["開発"]} />
                 <SelectField label="サブ" onChange={updateForm} options={["", "鹿島", "川西", "浅野"]} value={form["サブ"]} />
-                <Field label="営業報酬率" onChange={updateForm} type="number" value={form["営業報酬率"]} />
-                <Field label="開発報酬率" onChange={updateForm} type="number" value={form["開発報酬率"]} />
-                <Field label="サブ報酬率" onChange={updateForm} type="number" value={form["サブ報酬率"]} />
+                {isRewardAdmin && (
+                  <>
+                    <Field label="営業報酬率" onChange={updateForm} type="number" value={form["営業報酬率"]} />
+                    <Field label="開発報酬率" onChange={updateForm} type="number" value={form["開発報酬率"]} />
+                    <Field label="サブ報酬率" onChange={updateForm} type="number" value={form["サブ報酬率"]} />
+                  </>
+                )}
                 <SelectField label="申込状況" onChange={updateForm} options={["", "済"]} value={form["申込状況"]} />
                 <SelectField label="入金状況" onChange={updateForm} options={["", "済"]} value={form["入金状況"]} />
                 <Field label="サービス" onChange={updateForm} value={form["サービス"]} />
@@ -774,6 +800,40 @@ export default function Home() {
             </Panel>
           )}
 
+          <section className="admin-panel">
+            {isRewardAdmin ? (
+              <>
+                <span>報酬率変更: ログイン中</span>
+                <button className="secondary" onClick={() => void logoutRewardAdmin()} type="button">
+                  ログアウト
+                </button>
+              </>
+            ) : (
+              <form className="admin-login" onSubmit={loginRewardAdmin}>
+                <span>報酬率変更ログイン</span>
+                <input
+                  autoComplete="username"
+                  onChange={(event) =>
+                    setRewardLogin((current) => ({ ...current, id: event.target.value }))
+                  }
+                  placeholder="ID"
+                  value={rewardLogin.id}
+                />
+                <input
+                  autoComplete="current-password"
+                  onChange={(event) =>
+                    setRewardLogin((current) => ({ ...current, password: event.target.value }))
+                  }
+                  placeholder="パスワード"
+                  type="password"
+                  value={rewardLogin.password}
+                />
+                <button type="submit">ログイン</button>
+              </form>
+            )}
+            {rewardLoginMessage && <span className="message">{rewardLoginMessage}</span>}
+          </section>
+
           <Panel
             action={
               <input
@@ -788,7 +848,7 @@ export default function Home() {
               <table>
                 <thead>
                   <tr>
-                    {caseHeaders.map((header) => (
+                    {visibleCaseHeaders.map((header) => (
                       <th key={header}>{header}</th>
                     ))}
                   </tr>
@@ -796,7 +856,7 @@ export default function Home() {
                 <tbody>
                   {filteredCases.map((row, rowIndex) => (
                     <tr key={String(row.id || row["NO"] || rowIndex)}>
-                      {caseHeaders.map((header) => (
+                      {visibleCaseHeaders.map((header) => (
                         <td
                           className={moneyHeaders.has(header) ? "money" : ""}
                           key={`${rowIndex}-${header}`}
@@ -971,9 +1031,6 @@ export default function Home() {
                   "営業",
                   "開発",
                   "サブ",
-                  "営業報酬率",
-                  "開発報酬率",
-                  "サブ報酬率",
                   "浅野報酬",
                   "鹿島報酬",
                   "川西報酬",

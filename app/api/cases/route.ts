@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import seed from "../../seed-data.json";
+import { isRewardAdmin } from "../reward-auth/session";
 
 type Row = (string | number)[];
 type CaseRecord = Record<string, string | number>;
@@ -10,6 +11,7 @@ const caseHeaders = [
   "開発報酬率",
   "サブ報酬率",
 ];
+const rewardRateHeaders = ["営業報酬率", "開発報酬率", "サブ報酬率"];
 const seedRows = seed.cases.rows as Row[];
 
 function rowToRecord(row: Row): CaseRecord {
@@ -64,6 +66,9 @@ export async function POST(request: Request) {
   try {
     const payload = await request.json();
     const record = normalizeCase(payload);
+    if (!isRewardAdmin(request)) {
+      for (const key of rewardRateHeaders) record[key] = "";
+    }
     const maxRow = await env.DB.prepare("SELECT MAX(no) AS maxNo FROM cases").first<{
       maxNo: number | null;
     }>();
@@ -92,6 +97,16 @@ export async function PUT(request: Request) {
     const record = normalizeCase(payload);
     const no = Number(record["NO"]) || id;
     record["NO"] = no;
+
+    if (!isRewardAdmin(request)) {
+      const current = await env.DB.prepare("SELECT data FROM cases WHERE id = ?")
+        .bind(id)
+        .first<{ data: string }>();
+      const currentRecord = current?.data ? (JSON.parse(current.data) as CaseRecord) : {};
+      for (const key of rewardRateHeaders) {
+        record[key] = currentRecord[key] ?? "";
+      }
+    }
 
     await env.DB.prepare(
       "UPDATE cases SET no = ?, data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
