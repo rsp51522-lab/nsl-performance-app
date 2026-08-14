@@ -77,3 +77,26 @@ export async function POST(request: Request) {
     return Response.json({ error: message }, { status: 500 });
   }
 }
+
+export async function PUT(request: Request) {
+  try {
+    const payload = (await request.json()) as { case?: CaseRecord & { id?: number } };
+    const id = Number(payload.case?.id);
+    if (!id) return Response.json({ error: "id is required" }, { status: 400 });
+
+    const record = normalizeCase(payload);
+    const no = Number(record["NO"]) || id;
+    record["NO"] = no;
+
+    await env.DB.prepare(
+      "UPDATE cases SET no = ?, data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    )
+      .bind(no, JSON.stringify(record), id)
+      .run();
+
+    return Response.json({ case: { id, ...record } });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to update case";
+    return Response.json({ error: message }, { status: 500 });
+  }
+}

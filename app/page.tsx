@@ -24,6 +24,7 @@ const defaultSteps = [
   "納期入力",
   "作業内容進捗報告",
 ];
+const staffOptions = ["", "浅野", "鹿島", "川西"];
 const moneyHeaders = new Set([
   "税抜単価",
   "税抜金額",
@@ -304,6 +305,9 @@ export default function Home() {
     "作業時間",
     "作業日数",
     "作業状況",
+    "営業",
+    "開発",
+    "サブ",
     "作業開始",
     "最終納品予定",
     "進捗工程",
@@ -389,6 +393,34 @@ export default function Home() {
       setMessage(error instanceof Error ? error.message : "保存できませんでした。");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function saveCaseAssignment(row: CaseRecord, key: string, value: string) {
+    const id = Number(row.id);
+    const next = { ...row, [key]: value };
+    setCases((current) => current.map((item) => (item === row || item.id === row.id ? next : item)));
+    setMessage("担当を保存しています。");
+
+    if (!id) {
+      setMessage("案件データの読み込み後に変更してください。");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/cases", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ case: next }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "保存できませんでした。");
+      setCases((current) =>
+        current.map((item) => (item.id === result.case.id ? result.case : item)),
+      );
+      setMessage("担当を変更しました。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "保存できませんでした。");
     }
   }
 
@@ -523,10 +555,45 @@ export default function Home() {
             title="案件"
           >
             <div className="table-wrap">
-              <SimpleTable
-                headers={caseHeaders}
-                rows={filteredCases.map((row) => caseHeaders.map((header) => row[header] ?? ""))}
-              />
+              <table>
+                <thead>
+                  <tr>
+                    {caseHeaders.map((header) => (
+                      <th key={header}>{header}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCases.map((row, rowIndex) => (
+                    <tr key={String(row.id || row["NO"] || rowIndex)}>
+                      {caseHeaders.map((header) => (
+                        <td
+                          className={moneyHeaders.has(header) ? "money" : ""}
+                          key={`${rowIndex}-${header}`}
+                        >
+                          {["営業", "開発", "サブ"].includes(header) ? (
+                            <select
+                              className="cell-select"
+                              onChange={(event) => void saveCaseAssignment(row, header, event.target.value)}
+                              value={String(row[header] ?? "")}
+                            >
+                              {staffOptions.map((option) => (
+                                <option key={option || "blank"} value={option}>
+                                  {option || "未設定"}
+                                </option>
+                              ))}
+                            </select>
+                          ) : moneyHeaders.has(header) ? (
+                            yen(row[header] ?? "")
+                          ) : (
+                            String(row[header] ?? "")
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </Panel>
         </>
@@ -656,6 +723,25 @@ export default function Home() {
                   value={String(selectedProcess["作業内容"] || "")}
                 />
               </label>
+
+              <SelectField
+                label="営業"
+                onChange={updateSelected}
+                options={staffOptions}
+                value={String(selectedProcess["営業"] || "")}
+              />
+              <SelectField
+                label="開発"
+                onChange={updateSelected}
+                options={staffOptions}
+                value={String(selectedProcess["開発"] || "")}
+              />
+              <SelectField
+                label="サブ"
+                onChange={updateSelected}
+                options={staffOptions}
+                value={String(selectedProcess["サブ"] || "")}
+              />
 
               <label>
                 <span>作業時間</span>
