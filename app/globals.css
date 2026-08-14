@@ -71,6 +71,12 @@ header p {
   margin-top: 4px;
 }
 
+.version-note {
+  color: #a7f3d0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 button,
 input,
 select,
