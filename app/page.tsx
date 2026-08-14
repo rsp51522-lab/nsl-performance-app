@@ -566,7 +566,7 @@ export default function Home() {
                               <span className={`status ${statusClass(status)}`}>{status}</span>
                             </button>
                           ) : header === "進捗工程" ? (
-                            Array.isArray(row["進捗工程"]) ? row["進捗工程"].length : ""
+                            Array.isArray(row["進捗工程"]) ? row["進捗工程"].join(" / ") : ""
                           ) : (
                             String(row[header] ?? "")
                           )}
