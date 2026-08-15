@@ -900,17 +900,32 @@ export default function Home() {
     try {
       const extracted = await readPdfText(file);
       const items = extractQuoteItems(extracted);
+      const companyName = extractQuoteCompanyName(extracted);
       if (!items.length) {
         setCaseQuoteMessage(
           "商品名・数量・税抜単価を自動抽出できませんでした。手入力で追加してください。",
         );
+        if (companyName) {
+          setForm((current) => ({
+            ...current,
+            会社名: current["会社名"] || companyName,
+          }));
+        }
         return;
       }
 
       setCaseQuoteItems(items);
-      setForm((current) => applyQuoteItemToRecord(current, items[0]));
+      setForm((current) =>
+        applyQuoteItemToRecord(
+          {
+            ...current,
+            会社名: current["会社名"] || companyName || "",
+          },
+          items[0],
+        ),
+      );
       setCaseQuoteMessage(
-        `${items.length}項目を読み込みました。1項目目は入力欄へ反映済みです。`,
+        `${items.length}項目を読み込みました。会社名と1項目目は入力欄へ反映済みです。`,
       );
     } catch (error) {
       setCaseQuoteMessage(
@@ -1324,7 +1339,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/15 22:18 見積PDFから案件追加</p>
+          <p className="version-note">最新版: 2026/08/15 22:42 PDF会社名・ID単位対応</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
@@ -2058,7 +2073,7 @@ function extractQuoteItems(text: string) {
       : normalized;
   const endIndex = tableText.search(/\s+(?:小計|消費税|割引|合計金額|合計)\s*/);
   const target = endIndex >= 0 ? tableText.slice(0, endIndex) : tableText;
-  const units = ["セット", "ファイル", "件", "式", "個", "時間", "枚", "本"];
+  const units = ["セット", "ファイル", "ID", "id", "件", "式", "個", "時間", "枚", "本"];
   const unitPattern = units.join("|");
   const rowPattern = new RegExp(
     `\\s(${unitPattern})\\s+([0-9]+(?:\\.[0-9]+)?)\\s+(?:¥|￥)\\s*([0-9,]+)\\s+(?:¥|￥)\\s*([0-9,]+)`,
@@ -2072,8 +2087,8 @@ function extractQuoteItems(text: string) {
     const name = rawName
       .replace(/^.*商品名\s+単位\s+数量.*?金額\s*\(?税抜\)?\s*/, "")
       .replace(/[¥￥][0-9,]+/g, "")
-      .replace(/\s+/g, "")
-      .replace(/^商品名単位数量単価\(?税抜\)?金額\(?税抜\)?/, "")
+      .replace(/^商品名\s*単位\s*数量\s*単価\(?税抜\)?\s*金\s*額\(?税抜\)?\s*/, "")
+      .replace(/\s+/g, " ")
       .trim();
     lastEnd = (match.index || 0) + match[0].length;
     if (!name || /小計|消費税|合計|割引/.test(name)) continue;
@@ -2087,6 +2102,17 @@ function extractQuoteItems(text: string) {
   }
 
   return items;
+}
+
+function extractQuoteCompanyName(text: string) {
+  const normalized = text.normalize("NFKC").replace(/\s+/g, " ").trim();
+  const match =
+    normalized.match(/御\s*見\s*積\s*書\s+(.+?)\s+御中(?:\s|$)/) ||
+    normalized.match(/^(.+?)\s+御中(?:\s|$)/);
+  return (match?.[1] || "")
+    .replace(/御\s*見\s*積\s*書/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function formatQuoteItems(items: ReturnType<typeof extractQuoteItems>) {
