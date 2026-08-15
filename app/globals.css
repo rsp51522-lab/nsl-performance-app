@@ -238,6 +238,10 @@ section {
   overflow: auto;
 }
 
+.case-table-wrap {
+  -webkit-overflow-scrolling: touch;
+}
+
 .sticky-staff-table {
   -webkit-overflow-scrolling: touch;
   overflow-x: auto;
@@ -493,6 +497,81 @@ table.compact,
 
 .sticky-staff-table .total-row td:first-child {
   background: #f0fdfa;
+}
+
+.case-table {
+  min-width: 1660px;
+  table-layout: fixed;
+}
+
+.case-table th,
+.case-table td {
+  height: 42px;
+}
+
+.case-table .case-sticky-col {
+  background: var(--white);
+  position: sticky;
+  z-index: 2;
+}
+
+.case-table th.case-sticky-col {
+  background: var(--teal);
+  z-index: 5;
+}
+
+.case-table .case-action-col {
+  left: 0;
+  min-width: 56px;
+  width: 56px;
+}
+
+.case-table .case-no-col {
+  left: 56px;
+  min-width: 48px;
+  width: 48px;
+}
+
+.case-table .case-company-col {
+  left: 104px;
+  min-width: 130px;
+  width: 130px;
+}
+
+.case-table .case-rep-col {
+  left: 234px;
+  min-width: 78px;
+  width: 78px;
+}
+
+.case-table .case-date-col {
+  min-width: 58px;
+  width: 58px;
+}
+
+.case-table .case-appointment-col {
+  left: 312px;
+}
+
+.case-table .case-application-col {
+  left: 370px;
+}
+
+.case-table .case-payment-col {
+  box-shadow: 2px 0 0 #edf2f7;
+  left: 428px;
+}
+
+.case-table th:not(.case-sticky-col),
+.case-table td:not(.case-sticky-col) {
+  min-width: 88px;
+  width: 88px;
+}
+
+.case-table th:nth-child(n + 8),
+.case-table td:nth-child(n + 8) {
+  min-width: 112px;
+  width: 112px;
 }
 
 th,

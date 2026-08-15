@@ -31,6 +31,7 @@ const staffOptions = ["", "浅野", "鹿島", "川西"];
 const exportStaff = ["浅野", "鹿島", "川西"];
 const exportMonths = [6, 7, 8, 9, 10, 11, 12];
 const rateHeaders = new Set(rewardRateHeaders);
+const caseDateHeaders = new Set(["アポ日", "申込日", "入金日"]);
 const moneyHeaders = new Set([
   "税抜単価",
   "税抜金額",
@@ -420,6 +421,28 @@ function statusClass(status: string | number | boolean | string[]) {
 function shortDate(value: string | number | boolean | string[]) {
   const date = dateValue(value);
   return date ? `${date.getMonth() + 1}/${date.getDate()}` : "";
+}
+
+function caseHeaderLabel(header: string) {
+  const labels: Record<string, string> = {
+    アポ日: "アポ",
+    申込日: "申込",
+    入金日: "入金日",
+  };
+  return labels[header] || header;
+}
+
+function caseColumnClass(header: string) {
+  const classes: Record<string, string> = {
+    操作: "case-sticky-col case-action-col",
+    NO: "case-sticky-col case-no-col",
+    会社名: "case-sticky-col case-company-col",
+    代表: "case-sticky-col case-rep-col",
+    アポ日: "case-sticky-col case-date-col case-appointment-col",
+    申込日: "case-sticky-col case-date-col case-application-col",
+    入金日: "case-sticky-col case-date-col case-payment-col",
+  };
+  return classes[header] || "";
 }
 
 function processHeaderLabel(header: string) {
@@ -1213,7 +1236,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/15 11:58 案件・工程新しい順</p>
+          <p className="version-note">最新版: 2026/08/15 13:58 案件日付・固定列調整</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
@@ -1386,20 +1409,22 @@ export default function Home() {
             }
             title="案件"
           >
-            <div className="table-wrap">
-              <table>
+            <div className="table-wrap case-table-wrap">
+              <table className="case-table">
                 <thead>
                   <tr>
-                    <th>操作</th>
+                    <th className={caseColumnClass("操作")}>操作</th>
                     {visibleCaseHeaders.map((header) => (
-                      <th key={header}>{header}</th>
+                      <th className={caseColumnClass(header)} key={header}>
+                        {caseHeaderLabel(header)}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredCases.map((row, rowIndex) => (
                     <tr key={String(row.id || row["NO"] || rowIndex)}>
-                      <td>
+                      <td className={caseColumnClass("操作")}>
                         <button
                           className="table-action"
                           onClick={() => openCaseEdit(row)}
@@ -1410,7 +1435,9 @@ export default function Home() {
                       </td>
                       {visibleCaseHeaders.map((header) => (
                         <td
-                          className={moneyHeaders.has(header) ? "money" : ""}
+                          className={[caseColumnClass(header), moneyHeaders.has(header) ? "money" : ""]
+                            .filter(Boolean)
+                            .join(" ")}
                           key={`${rowIndex}-${header}`}
                         >
                           {["営業", "開発", "サブ"].includes(header) ? (
@@ -1439,6 +1466,8 @@ export default function Home() {
                             />
                           ) : moneyHeaders.has(header) ? (
                             yen(row[header] ?? "")
+                          ) : caseDateHeaders.has(header) ? (
+                            shortDate(row[header] ?? "")
                           ) : (
                             String(row[header] ?? "")
                           )}
