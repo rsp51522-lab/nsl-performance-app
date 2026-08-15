@@ -408,16 +408,20 @@ function statusClass(status: string | number | boolean | string[]) {
   return "unset";
 }
 
-function weekStarts() {
+function graphWeeks() {
   const today = new Date();
   const min = new Date(today.getFullYear(), today.getMonth() - 1, 1);
   const max = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  const day = min.getDay();
-  const daysUntilMonday = (8 - day) % 7;
-  min.setDate(min.getDate() + daysUntilMonday);
-  const weeks: Date[] = [];
-  for (const date = new Date(min); date <= max; date.setDate(date.getDate() + 7)) {
-    weeks.push(new Date(date));
+  const weeks: { start: Date; end: Date }[] = [];
+  const firstEnd = new Date(min);
+  firstEnd.setDate(firstEnd.getDate() + ((7 - firstEnd.getDay()) % 7));
+  weeks.push({ start: new Date(min), end: firstEnd > max ? new Date(max) : firstEnd });
+  const next = new Date(firstEnd);
+  next.setDate(next.getDate() + 1);
+  for (const date = next; date <= max; date.setDate(date.getDate() + 7)) {
+    const end = new Date(date);
+    end.setDate(end.getDate() + 6);
+    weeks.push({ start: new Date(date), end: end > max ? new Date(max) : end });
   }
   return weeks;
 }
@@ -506,6 +510,7 @@ export default function Home() {
   const [isCaseEditSaving, setIsCaseEditSaving] = useState(false);
   const [isCaseDeleting, setIsCaseDeleting] = useState(false);
   const [isProcessSaving, setIsProcessSaving] = useState(false);
+  const [isProcessDeleting, setIsProcessDeleting] = useState(false);
   const [isCsvSaving, setIsCsvSaving] = useState(false);
   const [isRewardAdmin, setIsRewardAdmin] = useState(false);
   const [rewardLogin, setRewardLogin] = useState({ id: "", password: "" });
@@ -768,21 +773,17 @@ export default function Home() {
       (!processFilter.workStatus || row["作業状況"] === processFilter.workStatus)
     );
   });
-  const weeks = weekStarts();
+  const weeks = graphWeeks();
   const processHeaders = [
-    "NO",
     "会社名",
-    "作業内容",
-    "作業時間",
-    "作業日数",
-    "作業状況",
+    "納期判定",
     "営業",
     "開発",
     "サブ",
     "作業開始",
     "最終納品予定",
-    "進捗工程",
-    "納期判定",
+    "作業時間",
+    "作業日数",
   ];
 
   function updateCaseRecord(record: CaseRecord, key: string, value: string) {
@@ -1069,6 +1070,45 @@ export default function Home() {
     }
   }
 
+  async function deleteSelectedProcess() {
+    if (!selectedProcess) return;
+    const companyKey = normalizeCompanyName(selectedProcess["会社名"]);
+    const ids = processItems
+      .filter((item) => normalizeCompanyName(item["会社名"]) === companyKey)
+      .map((item) => Number(item.id))
+      .filter(Boolean);
+    const fallbackId = Number(selectedProcess.id);
+    const deleteIds = ids.length ? ids : fallbackId ? [fallbackId] : [];
+
+    if (!deleteIds.length) {
+      setProcessMessage("削除できる工程データがありません。案件データは案件タブで削除してください。");
+      return;
+    }
+
+    const company = String(selectedProcess["会社名"] || "この会社");
+    if (!window.confirm(`${company} の工程データを削除します。よろしいですか？`)) return;
+
+    setIsProcessDeleting(true);
+    setProcessMessage("");
+    try {
+      const response = await fetch("/api/process", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: deleteIds }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "削除できませんでした。");
+      const deleted = new Set((result.ids || deleteIds).map((id: number) => Number(id)));
+      setProcessItems((current) => current.filter((item) => !deleted.has(Number(item.id))));
+      setSelectedProcess(null);
+      setProcessMessage("工程データを削除しました。");
+    } catch (error) {
+      setProcessMessage(error instanceof Error ? error.message : "削除できませんでした。");
+    } finally {
+      setIsProcessDeleting(false);
+    }
+  }
+
   function isPaidProcess(row: ProcessRecord) {
     const noValues = String(row["NO"] || "")
       .split(",")
@@ -1140,7 +1180,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/15 11:10 工程NO重複修正</p>
+          <p className="version-note">最新版: 2026/08/15 11:25 工程表一覧整理</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
@@ -1425,10 +1465,11 @@ export default function Home() {
                     <th key={header}>{header}</th>
                   ))}
                   {weeks.map((week) => (
-                    <th key={week.toISOString()}>
-                      {week.getMonth() + 1}/{week.getDate()}
+                    <th className="date-col" key={week.start.toISOString()}>
+                      {week.start.getMonth() + 1}/{week.start.getDate()}
                     </th>
                   ))}
+                  <th>作業状況</th>
                 </tr>
               </thead>
               <tbody>
@@ -1457,15 +1498,14 @@ export default function Home() {
                         </td>
                       ))}
                       {weeks.map((week) => {
-                        const end = new Date(week);
-                        end.setDate(end.getDate() + 6);
-                        const active = start && due && week <= due && end >= start;
+                        const active = start && due && week.start <= due && week.end >= start;
                         return (
-                          <td className="barcell" key={week.toISOString()}>
+                          <td className="barcell" key={week.start.toISOString()}>
                             {active && <span className={`bar ${paid ? "paid" : statusClass(status)}`} />}
                           </td>
                         );
                       })}
+                      <td>{String(row["作業状況"] || "")}</td>
                     </tr>
                   );
                 })}
@@ -1604,9 +1644,22 @@ export default function Home() {
                 <h2>{String(selectedProcess["会社名"] || "")}</h2>
                 <p className="note">現在の納期判定: {statusFor(selectedProcess)}</p>
               </div>
-              <button className="secondary" onClick={() => setSelectedProcess(null)} type="button">
-                閉じる
-              </button>
+              <div className="modal-head-actions">
+                <button disabled={isProcessSaving || isProcessDeleting} onClick={saveProcess} type="button">
+                  {isProcessSaving ? "保存中" : "工程を保存"}
+                </button>
+                <button
+                  className="danger"
+                  disabled={isProcessSaving || isProcessDeleting}
+                  onClick={() => void deleteSelectedProcess()}
+                  type="button"
+                >
+                  {isProcessDeleting ? "削除中" : "削除"}
+                </button>
+                <button className="secondary" disabled={isProcessDeleting} onClick={() => setSelectedProcess(null)} type="button">
+                  閉じる
+                </button>
+              </div>
             </div>
 
             <div className="detail-grid">
@@ -1743,8 +1796,16 @@ export default function Home() {
             </div>
 
             <div className="form-actions modal-actions">
-              <button disabled={isProcessSaving} onClick={saveProcess} type="button">
+              <button disabled={isProcessSaving || isProcessDeleting} onClick={saveProcess} type="button">
                 {isProcessSaving ? "保存中" : "工程を保存"}
+              </button>
+              <button
+                className="danger"
+                disabled={isProcessSaving || isProcessDeleting}
+                onClick={() => void deleteSelectedProcess()}
+                type="button"
+              >
+                {isProcessDeleting ? "削除中" : "削除"}
               </button>
               {processMessage && <span className="message">{processMessage}</span>}
             </div>

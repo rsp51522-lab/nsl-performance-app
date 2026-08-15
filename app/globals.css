@@ -560,13 +560,18 @@ td.money {
 }
 
 .gantt {
-  min-width: 1120px;
+  min-width: 1320px;
 }
 
 .gantt .barcell {
   height: 28px;
   min-width: 54px;
   width: 54px;
+}
+
+.gantt th.date-col {
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .bar {

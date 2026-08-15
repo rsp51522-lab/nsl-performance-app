@@ -123,3 +123,25 @@ export async function PUT(request: Request) {
     return Response.json({ error: message }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const payload = (await request.json().catch(() => ({}))) as {
+      id?: number;
+      ids?: number[];
+    };
+    const ids = Array.isArray(payload.ids)
+      ? payload.ids.map((id) => Number(id)).filter(Boolean)
+      : [Number(payload.id)].filter(Boolean);
+    if (!ids.length) return Response.json({ error: "id is required" }, { status: 400 });
+
+    await env.DB.batch(
+      ids.map((id) => env.DB.prepare("DELETE FROM process_items WHERE id = ?").bind(id)),
+    );
+
+    return Response.json({ ids });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to delete process item";
+    return Response.json({ error: message }, { status: 500 });
+  }
+}
