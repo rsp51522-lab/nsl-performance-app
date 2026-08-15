@@ -685,13 +685,42 @@ export default function Home() {
     }
     return keys;
   }, [cases]);
+  const currentCompanyByNo = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of cases) {
+      const no = String(row["NO"] || "").trim();
+      const companyKey = normalizeCompanyName(row["会社名"]);
+      if (no && companyKey) map.set(no, companyKey);
+    }
+    return map;
+  }, [cases]);
+  const currentCompanies = useMemo(() => {
+    const keys = new Set<string>();
+    for (const row of cases) {
+      const companyKey = normalizeCompanyName(row["会社名"]);
+      if (companyKey) keys.add(companyKey);
+    }
+    return keys;
+  }, [cases]);
   const groupedProcessItems = useMemo(() => {
     const groups = new Map<string, ProcessItem>();
 
     for (const row of processItems) {
       const companyKey = normalizeCompanyName(row["会社名"]) || `process:${row.id ?? row["NO"]}`;
+      const rawNos = uniqueList(row["NO"], /[,、]+/);
+      const validNos = rawNos.filter((no) => {
+        const currentCompany = currentCompanyByNo.get(no);
+        return !currentCompany || currentCompany === companyKey;
+      });
+      if (rawNos.length > 0 && validNos.length === 0 && !currentCompanies.has(companyKey)) {
+        continue;
+      }
+      const cleanRow = {
+        ...row,
+        NO: rawNos.length > 0 ? validNos.join(", ") : row["NO"],
+      };
       const current = groups.get(companyKey);
-      groups.set(companyKey, current ? mergeCompanyProcess(current, row) : { ...row });
+      groups.set(companyKey, current ? mergeCompanyProcess(current, cleanRow) : { ...cleanRow });
     }
 
     for (const row of cases) {
@@ -722,7 +751,7 @@ export default function Home() {
     }
 
     return [...groups.values()];
-  }, [cases, processItems]);
+  }, [cases, currentCompanies, currentCompanyByNo, processItems]);
   const filteredProcessItems = groupedProcessItems.filter((row) => {
     const text = JSON.stringify(row).toLowerCase();
     const keyword = processFilter.keyword.toLowerCase();
@@ -1111,7 +1140,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/14 19:34 同一会社工程まとめ対応</p>
+          <p className="version-note">最新版: 2026/08/15 11:10 工程NO重複修正</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
