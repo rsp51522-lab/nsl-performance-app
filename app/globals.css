@@ -560,18 +560,47 @@ td.money {
 }
 
 .gantt {
-  min-width: 1320px;
+  min-width: 1480px;
+  table-layout: fixed;
 }
 
 .gantt .barcell {
   height: 28px;
-  min-width: 54px;
-  width: 54px;
+  min-width: 68px;
+  width: 68px;
 }
 
 .gantt th.date-col {
   font-size: 11px;
   white-space: nowrap;
+}
+
+.gantt .company-col {
+  background: var(--white);
+  box-shadow: 2px 0 0 #edf2f7;
+  left: 0;
+  min-width: 180px;
+  position: sticky;
+  width: 180px;
+  z-index: 2;
+}
+
+.gantt th.company-col {
+  background: var(--teal);
+  z-index: 4;
+}
+
+.gantt .status-col {
+  width: 92px;
+}
+
+.gantt .staff-col,
+.gantt .date-field-col,
+.gantt .number-col,
+.gantt .date-col,
+.gantt .work-status-col {
+  min-width: 68px;
+  width: 68px;
 }
 
 .bar {

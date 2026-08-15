@@ -408,6 +408,30 @@ function statusClass(status: string | number | boolean | string[]) {
   return "unset";
 }
 
+function shortDate(value: string | number | boolean | string[]) {
+  const date = dateValue(value);
+  return date ? `${date.getMonth() + 1}/${date.getDate()}` : "";
+}
+
+function processHeaderLabel(header: string) {
+  const labels: Record<string, string> = {
+    作業開始: "開始",
+    最終納品予定: "納品",
+    作業時間: "時間",
+    作業日数: "日数",
+  };
+  return labels[header] || header;
+}
+
+function processColumnClass(header: string) {
+  if (header === "会社名") return "company-col";
+  if (header === "納期判定") return "status-col";
+  if (["営業", "開発", "サブ"].includes(header)) return "staff-col";
+  if (["作業開始", "最終納品予定"].includes(header)) return "date-field-col";
+  if (["作業時間", "作業日数"].includes(header)) return "number-col";
+  return "";
+}
+
 function graphWeeks() {
   const today = new Date();
   const min = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -1180,7 +1204,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/15 11:25 工程表一覧整理</p>
+          <p className="version-note">最新版: 2026/08/15 11:40 工程表列幅調整</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
@@ -1462,14 +1486,16 @@ export default function Home() {
               <thead>
                 <tr>
                   {processHeaders.map((header) => (
-                    <th key={header}>{header}</th>
+                    <th className={processColumnClass(header)} key={header}>
+                      {processHeaderLabel(header)}
+                    </th>
                   ))}
                   {weeks.map((week) => (
                     <th className="date-col" key={week.start.toISOString()}>
                       {week.start.getMonth() + 1}/{week.start.getDate()}
                     </th>
                   ))}
-                  <th>作業状況</th>
+                  <th className="work-status-col">作業状況</th>
                 </tr>
               </thead>
               <tbody>
@@ -1481,7 +1507,7 @@ export default function Home() {
                   return (
                     <tr key={`${String(row.id ?? "")}-${String(row["NO"] || "")}-${String(row["会社名"] || "")}`}>
                       {processHeaders.map((header) => (
-                        <td key={header}>
+                        <td className={processColumnClass(header)} key={header}>
                           {header === "会社名" ? (
                             <button className="link-button" onClick={() => setSelectedProcess(row)} type="button">
                               {String(row[header] || "")}
@@ -1490,6 +1516,8 @@ export default function Home() {
                             <button className="plain-button" onClick={() => setSelectedProcess(row)} type="button">
                               <span className={`status ${statusClass(status)}`}>{status}</span>
                             </button>
+                          ) : header === "作業開始" || header === "最終納品予定" ? (
+                            shortDate(row[header])
                           ) : header === "進捗工程" ? (
                             Array.isArray(row["進捗工程"]) ? row["進捗工程"].join(" / ") : ""
                           ) : (
@@ -1505,7 +1533,7 @@ export default function Home() {
                           </td>
                         );
                       })}
-                      <td>{String(row["作業状況"] || "")}</td>
+                      <td className="work-status-col">{String(row["作業状況"] || "")}</td>
                     </tr>
                   );
                 })}
