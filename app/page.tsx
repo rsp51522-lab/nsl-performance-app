@@ -706,9 +706,9 @@ export default function Home() {
     ];
   }, [cases]);
 
-  const filteredCases = cases.filter((row) =>
-    JSON.stringify(row).toLowerCase().includes(search.toLowerCase()),
-  );
+  const filteredCases = cases
+    .filter((row) => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => (Number(b["NO"]) || 0) - (Number(a["NO"]) || 0));
   const visibleCaseHeaders = useMemo(
     () => (isRewardAdmin ? caseHeaders : caseHeaders.filter((header) => !rateHeaders.has(header))),
     [isRewardAdmin],
@@ -1213,7 +1213,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/15 11:48 工程表新しい順</p>
+          <p className="version-note">最新版: 2026/08/15 11:58 案件・工程新しい順</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
