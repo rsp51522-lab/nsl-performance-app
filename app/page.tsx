@@ -230,6 +230,15 @@ function mergeCompanyProcess(base: ProcessItem, next: ProcessRecord) {
   return merged;
 }
 
+function processSortValue(row: ProcessRecord) {
+  const maxNo = Math.max(0, ...uniqueList(row["NO"], /[,、]+/).map((no) => Number(no) || 0));
+  if (maxNo) return maxNo;
+  const dates = [row["作業開始"], row["最終納品予定"], row["作業終了"]]
+    .map((value) => dateValue(value)?.getTime() || 0)
+    .filter(Boolean);
+  return dates.length ? Math.max(...dates) / 86400000 : 0;
+}
+
 function processForCase(row: CaseRecord, processItems: ProcessItem[]) {
   const no = String(row["NO"] || "").trim();
   return (
@@ -779,7 +788,7 @@ export default function Home() {
       );
     }
 
-    return [...groups.values()];
+    return [...groups.values()].sort((a, b) => processSortValue(b) - processSortValue(a));
   }, [cases, currentCompanies, currentCompanyByNo, processItems]);
   const filteredProcessItems = groupedProcessItems.filter((row) => {
     const text = JSON.stringify(row).toLowerCase();
@@ -1204,7 +1213,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/15 11:40 工程表列幅調整</p>
+          <p className="version-note">最新版: 2026/08/15 11:48 工程表新しい順</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
