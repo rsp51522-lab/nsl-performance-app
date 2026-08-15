@@ -320,6 +320,35 @@ section {
   width: 100%;
 }
 
+.case-pdf-import,
+.quote-import-preview {
+  grid-column: 1 / -1;
+}
+
+.quote-import-preview {
+  align-items: flex-start;
+  border: 1px dashed #99c7c0;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.quote-import-table {
+  max-width: 720px;
+  overflow-x: auto;
+  width: 100%;
+}
+
+.quote-import-table table {
+  min-width: 520px;
+}
+
+.quote-import-table th,
+.quote-import-table td {
+  position: static;
+}
+
 .cell-select {
   min-width: 86px;
   padding: 4px 6px;

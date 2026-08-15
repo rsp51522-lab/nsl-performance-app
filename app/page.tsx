@@ -12,6 +12,13 @@ type ProcessRecord = Record<string, string | number | boolean | string[]>;
 type ProcessItem = ProcessRecord & { id?: number };
 type CsvRow = (string | number)[];
 type CsvFile = { name: string; rows: CsvRow[] };
+type QuoteItem = {
+  name: string;
+  unit: string;
+  quantity: string;
+  priceEx: number;
+  amountEx: number;
+};
 
 const data = seed as AppData;
 const rewardRateHeaders = ["営業報酬率", "開発報酬率", "サブ報酬率"];
@@ -177,6 +184,21 @@ function taxIncluded(row: CaseRecord, preferredKey: string) {
   if (preferred) return Math.round(preferred);
   const subtotal = Number(row["税抜金額"]) || (Number(row["税抜単価"]) || 0) * (Number(row["個数"]) || 0);
   return subtotal ? Math.round(subtotal * 1.1) : 0;
+}
+
+function applyQuoteItemToRecord(record: CaseRecord, item: QuoteItem) {
+  const quantity = Number(item.quantity) || 0;
+  const subtotal = item.amountEx || Math.round(item.priceEx * quantity);
+  return {
+    ...record,
+    サービス: item.name,
+    税抜単価: item.priceEx || "",
+    個数: item.quantity || 1,
+    税抜金額: subtotal || "",
+    消費税: subtotal ? Math.round(subtotal * 0.1) : "",
+    アポ金額: subtotal || "",
+    申込金額: subtotal ? Math.round(subtotal * 1.1) : "",
+  };
 }
 
 function normalizeCompanyName(value: string | number | boolean | string[] | undefined) {
@@ -559,6 +581,9 @@ export default function Home() {
   const [showCaseForm, setShowCaseForm] = useState(false);
   const [form, setForm] = useState<CaseRecord>(initialForm);
   const [editingCase, setEditingCase] = useState<CaseRecord | null>(null);
+  const [caseQuoteItems, setCaseQuoteItems] = useState<QuoteItem[]>([]);
+  const [caseQuoteFileName, setCaseQuoteFileName] = useState("");
+  const [caseQuoteMessage, setCaseQuoteMessage] = useState("");
   const [message, setMessage] = useState("");
   const [processMessage, setProcessMessage] = useState("");
   const [csvMessage, setCsvMessage] = useState("");
@@ -868,6 +893,78 @@ export default function Home() {
     setMessage("");
   }
 
+  async function readCaseQuotePdf(file: File) {
+    setCaseQuoteMessage("見積書PDFを読み込んでいます。");
+    setCaseQuoteFileName(file.name);
+    setCaseQuoteItems([]);
+    try {
+      const extracted = await readPdfText(file);
+      const items = extractQuoteItems(extracted);
+      if (!items.length) {
+        setCaseQuoteMessage(
+          "商品名・数量・税抜単価を自動抽出できませんでした。手入力で追加してください。",
+        );
+        return;
+      }
+
+      setCaseQuoteItems(items);
+      setForm((current) => applyQuoteItemToRecord(current, items[0]));
+      setCaseQuoteMessage(
+        `${items.length}項目を読み込みました。1項目目は入力欄へ反映済みです。`,
+      );
+    } catch (error) {
+      setCaseQuoteMessage(
+        error instanceof Error ? `PDF読込エラー: ${error.message}` : "PDF読込エラーが発生しました。",
+      );
+    }
+  }
+
+  async function addQuoteCases() {
+    if (!caseQuoteItems.length) {
+      setCaseQuoteMessage("先に見積書PDFを読み込んでください。");
+      return;
+    }
+    if (!form["会社名"] && !form["代表"]) {
+      setCaseQuoteMessage("会社名または代表を入力してください。");
+      return;
+    }
+
+    setIsSaving(true);
+    setMessage("");
+    setCaseQuoteMessage("PDF明細を案件へ追加しています。");
+    try {
+      const savedCases: CaseRecord[] = [];
+      for (const item of caseQuoteItems) {
+        const base = applyQuoteItemToRecord(form, item);
+        const record = {
+          ...base,
+          申込状況: base["申込状況"] || (base["申込日"] ? "済" : ""),
+        };
+        const payload = Object.fromEntries(caseHeaders.map((header) => [header, record[header] ?? ""]));
+        const response = await fetch("/api/cases", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ case: payload }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "保存できませんでした。");
+        savedCases.push(result.case);
+      }
+
+      setCases((current) => [...current, ...savedCases]);
+      setForm(initialForm);
+      setShowCaseForm(false);
+      setCaseQuoteItems([]);
+      setCaseQuoteFileName("");
+      setCaseQuoteMessage("");
+      setMessage(`見積書PDFから${savedCases.length}件の案件を追加しました。`);
+    } catch (error) {
+      setCaseQuoteMessage(error instanceof Error ? error.message : "保存できませんでした。");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function loginRewardAdmin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setRewardLoginMessage("");
@@ -921,19 +1018,7 @@ export default function Home() {
   async function readQuotePdf(file: File) {
     setProcessMessage("PDFを読み込んでいます。");
     try {
-      const pdfjs: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
-      pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const pdf = await pdfjs.getDocument({ data: bytes }).promise;
-      const pages: string[] = [];
-
-      for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
-        const page = await pdf.getPage(pageNo);
-        const content = await page.getTextContent();
-        pages.push(content.items.map((item: any) => item.str || "").join(" "));
-      }
-
-      const extracted = pages.join("\n").trim();
+      const extracted = await readPdfText(file);
       const quoteItems = extractQuoteItems(extracted);
       const quoteSummary = formatQuoteItems(quoteItems);
       const text =
@@ -991,6 +1076,9 @@ export default function Home() {
       setCases((current) => [...current, result.case]);
       setForm(initialForm);
       setShowCaseForm(false);
+      setCaseQuoteItems([]);
+      setCaseQuoteFileName("");
+      setCaseQuoteMessage("");
       setMessage("新規案件を追加しました。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存できませんでした。");
@@ -1236,7 +1324,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/15 13:58 案件日付・固定列調整</p>
+          <p className="version-note">最新版: 2026/08/15 22:18 見積PDFから案件追加</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
@@ -1312,6 +1400,7 @@ export default function Home() {
               onClick={() => {
                 setShowCaseForm(true);
                 setMessage("");
+                setCaseQuoteMessage("");
               }}
               type="button"
             >
@@ -1342,6 +1431,52 @@ export default function Home() {
                 <SelectField label="営業" onChange={updateForm} options={["浅野", "鹿島", "川西", ""]} value={form["営業"]} />
                 <SelectField label="開発" onChange={updateForm} options={["鹿島", "川西", "浅野", ""]} value={form["開発"]} />
                 <SelectField label="サブ" onChange={updateForm} options={["", "鹿島", "川西", "浅野"]} value={form["サブ"]} />
+                <label className="case-pdf-import">
+                  <span>見積書PDF読込</span>
+                  <input
+                    accept="application/pdf"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void readCaseQuotePdf(file);
+                    }}
+                    type="file"
+                  />
+                  {caseQuoteFileName && (
+                    <span className="note">読込済み: {caseQuoteFileName}</span>
+                  )}
+                </label>
+                {(caseQuoteItems.length > 0 || caseQuoteMessage) && (
+                  <div className="quote-import-preview">
+                    {caseQuoteMessage && <p className="message">{caseQuoteMessage}</p>}
+                    {caseQuoteItems.length > 0 && (
+                      <>
+                        <div className="quote-import-table">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>商品名</th>
+                                <th>数量</th>
+                                <th>税抜単価</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {caseQuoteItems.map((item, index) => (
+                                <tr key={`${item.name}-${index}`}>
+                                  <td>{item.name}</td>
+                                  <td>{item.quantity}</td>
+                                  <td className="money">{yen(item.priceEx)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <button disabled={isSaving} onClick={() => void addQuoteCases()} type="button">
+                          {isSaving ? "保存中" : `PDF明細を${caseQuoteItems.length}件追加`}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
                 {isRewardAdmin && (
                   <>
                     <Field label="営業報酬率" onChange={updateForm} type="number" value={form["営業報酬率"]} />
@@ -1882,6 +2017,22 @@ export default function Home() {
   );
 }
 
+async function readPdfText(file: File) {
+  const pdfjs: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+  const pages: string[] = [];
+
+  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
+    const page = await pdf.getPage(pageNo);
+    const content = await page.getTextContent();
+    pages.push(content.items.map((item: any) => item.str || "").join(" "));
+  }
+
+  return pages.join("\n").trim();
+}
+
 function estimateHours(text: string) {
   const hourMatches = [...text.matchAll(/([0-9]+(?:\.[0-9]+)?)\s*(?:時間|h|H)/g)];
   if (hourMatches.length) {
@@ -1909,28 +2060,45 @@ function extractQuoteItems(text: string) {
   const target = endIndex >= 0 ? tableText.slice(0, endIndex) : tableText;
   const units = ["セット", "ファイル", "件", "式", "個", "時間", "枚", "本"];
   const unitPattern = units.join("|");
-  const itemMatches = [
-    ...target.matchAll(
-      new RegExp(`(.+?)\\s+(${unitPattern})\\s+([0-9]+(?:\\.[0-9]+)?)\\s+(?:¥|￥)[0-9,]+\\s+(?:¥|￥)[0-9,]+`, "g"),
-    ),
-  ];
+  const rowPattern = new RegExp(
+    `\\s(${unitPattern})\\s+([0-9]+(?:\\.[0-9]+)?)\\s+(?:¥|￥)\\s*([0-9,]+)\\s+(?:¥|￥)\\s*([0-9,]+)`,
+    "g",
+  );
+  const items: QuoteItem[] = [];
+  let lastEnd = 0;
 
-  return itemMatches
-    .map((match) => ({
-      name: match[1]
-        .replace(/^.*商品名\s+単位\s+数量.*?金額\s*\(?税抜\)?\s*/, "")
-        .replace(/\s+/g, "")
-        .trim(),
-      unit: match[2],
-      quantity: match[3],
-    }))
-    .filter((item) => item.name && !/小計|消費税|合計|割引/.test(item.name));
+  for (const match of target.matchAll(rowPattern)) {
+    const rawName = target.slice(lastEnd, match.index).trim();
+    const name = rawName
+      .replace(/^.*商品名\s+単位\s+数量.*?金額\s*\(?税抜\)?\s*/, "")
+      .replace(/[¥￥][0-9,]+/g, "")
+      .replace(/\s+/g, "")
+      .replace(/^商品名単位数量単価\(?税抜\)?金額\(?税抜\)?/, "")
+      .trim();
+    lastEnd = (match.index || 0) + match[0].length;
+    if (!name || /小計|消費税|合計|割引/.test(name)) continue;
+    items.push({
+      name,
+      unit: match[1],
+      quantity: match[2],
+      priceEx: parseMoneyText(match[3]),
+      amountEx: parseMoneyText(match[4]),
+    });
+  }
+
+  return items;
 }
 
 function formatQuoteItems(items: ReturnType<typeof extractQuoteItems>) {
   if (!items.length) return "";
-  const lines = items.map((item) => `${item.name} / ${item.unit} / ${item.quantity}`);
-  return ["商品名 / 単位 / 数量", ...lines].join("\n");
+  const lines = items.map(
+    (item) => `${item.name} / ${item.unit} / ${item.quantity} / ${yen(item.priceEx)}`,
+  );
+  return ["商品名 / 単位 / 数量 / 税抜単価", ...lines].join("\n");
+}
+
+function parseMoneyText(value: string) {
+  return Number(String(value || "").replace(/,/g, "")) || 0;
 }
 
 function extractWorkContent(text: string) {
