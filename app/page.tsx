@@ -621,6 +621,29 @@ export default function Home() {
       .catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const company = params.get("company")?.trim() ?? "";
+    const representative = params.get("representative")?.trim() ?? "";
+    const shouldOpenCaseForm =
+      params.get("action") === "new" ||
+      Boolean(company) ||
+      Boolean(representative);
+
+    if (params.get("tab") === "cases" || shouldOpenCaseForm) {
+      setView("cases");
+    }
+
+    if (shouldOpenCaseForm) {
+      setShowCaseForm(true);
+      setForm((current) => ({
+        ...current,
+        会社名: company || current["会社名"],
+        代表: representative || current["代表"],
+      }));
+    }
+  }, []);
+
   const kpi = useMemo(
     () => ({
       total: cases.filter((row) => row["会社名"] || row["代表"]).length,
