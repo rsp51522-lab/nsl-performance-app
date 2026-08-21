@@ -184,6 +184,103 @@ section {
   margin: 0 24px;
 }
 
+.dashboard-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 230px minmax(0, 1fr);
+}
+
+.input-menu {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  position: sticky;
+  top: 12px;
+}
+
+.input-menu h2,
+.dashboard-control h2 {
+  color: var(--navy);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.input-menu p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+  margin-top: 5px;
+}
+
+.input-menu button,
+.input-menu .menu-link {
+  border-radius: 7px;
+  justify-content: flex-start;
+  text-align: left;
+  width: 100%;
+}
+
+.input-menu button.secondary,
+.input-menu .menu-link {
+  background: #f8fafc;
+  border-color: var(--line);
+  color: var(--navy);
+}
+
+.menu-eyebrow {
+  color: var(--teal);
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin-bottom: 4px;
+}
+
+.dashboard-main {
+  min-width: 0;
+}
+
+.dashboard-control {
+  align-items: center;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+}
+
+.period-tabs {
+  background: #eef6f5;
+  border: 1px solid #c7ddd9;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(3, minmax(72px, 1fr));
+  padding: 4px;
+}
+
+.period-tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--navy);
+  font-size: 13px;
+  font-weight: 800;
+  padding: 8px 10px;
+}
+
+.period-tabs button.active {
+  background: var(--teal);
+  color: var(--white);
+}
+
 .kpis {
   display: grid;
   gap: 10px;
@@ -756,6 +853,23 @@ td.money {
 
   .kpis {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .input-menu {
+    position: static;
+  }
+
+  .dashboard-control {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .period-tabs {
+    width: 100%;
   }
 
   .summary-grid {

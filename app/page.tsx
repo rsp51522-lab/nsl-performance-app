@@ -12,6 +12,7 @@ type ProcessRecord = Record<string, string | number | boolean | string[]>;
 type ProcessItem = ProcessRecord & { id?: number };
 type CsvRow = (string | number)[];
 type CsvFile = { name: string; rows: CsvRow[] };
+type DashboardPeriod = 3 | 6 | 12;
 type QuoteItem = {
   name: string;
   unit: string;
@@ -288,6 +289,13 @@ function rowTouchesMonth(row: CaseRecord, year: number, month: number) {
     isInMonth(row["申込日"], year, month) ||
     isInMonth(row["入金日"], year, month)
   );
+}
+
+function rowTouchesRange(row: CaseRecord, start: Date, end: Date) {
+  return ["アポ日", "申込日", "入金日"].some((key) => {
+    const date = dateValue(row[key]);
+    return !!date && date >= start && date <= end;
+  });
 }
 
 function detailCsvRows(rows: CaseRecord[], processItems: ProcessItem[]): CsvRow[] {
@@ -567,6 +575,7 @@ function SimpleTable({
 
 export default function Home() {
   const [view, setView] = useState("dashboard");
+  const [dashboardPeriod, setDashboardPeriod] = useState<DashboardPeriod>(3);
   const [search, setSearch] = useState("");
   const [processFilter, setProcessFilter] = useState({
     keyword: "",
@@ -644,16 +653,23 @@ export default function Home() {
     }
   }, []);
 
+  const dashboardCases = useMemo(() => {
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth() - dashboardPeriod + 1, 1);
+    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+    return cases.filter((row) => rowTouchesRange(row, start, end));
+  }, [cases, dashboardPeriod]);
+
   const kpi = useMemo(
     () => ({
-      total: cases.filter((row) => row["会社名"] || row["代表"]).length,
-      appointments: cases.filter((row) => row["アポ日"]).length,
-      applications: cases.filter((row) => row["申込状況"] === "済").length,
-      payments: cases.filter((row) => row["入金状況"] === "済").length,
-      contract: cases.reduce((sum, row) => sum + (Number(row["申込金額"]) || 0), 0),
-      paid: cases.reduce((sum, row) => sum + (Number(row["入金金額"]) || 0), 0),
+      total: dashboardCases.filter((row) => row["会社名"] || row["代表"]).length,
+      appointments: dashboardCases.filter((row) => row["アポ日"]).length,
+      applications: dashboardCases.filter((row) => row["申込状況"] === "済").length,
+      payments: dashboardCases.filter((row) => row["入金状況"] === "済").length,
+      contract: dashboardCases.reduce((sum, row) => sum + (Number(row["申込金額"]) || 0), 0),
+      paid: dashboardCases.reduce((sum, row) => sum + (Number(row["入金金額"]) || 0), 0),
     }),
-    [cases],
+    [dashboardCases],
   );
 
   const monthlyRows = useMemo(() => {
@@ -684,6 +700,11 @@ export default function Home() {
         row.contract - row.paid,
       ]);
   }, [cases]);
+
+  const dashboardMonthlyRows = useMemo(() => {
+    const allowedMonths = new Set(dashboardCases.map((row) => monthKey(row["申込日"])).filter(Boolean));
+    return monthlyRows.filter((row) => allowedMonths.has(String(row[0])));
+  }, [dashboardCases, monthlyRows]);
 
   const peopleRows = useMemo(() => {
     const rows = ["浅野", "鹿島", "川西", "未設定"].map((name) => {
@@ -745,6 +766,67 @@ export default function Home() {
       ],
     ];
   }, [cases]);
+
+  const dashboardPeopleRows = useMemo(() => {
+    const rows = ["浅野", "鹿島", "川西", "未設定"].map((name) => {
+      let appCount = 0;
+      let payCount = 0;
+      let app = 0;
+      let pay = 0;
+      let dev = 0;
+      let sub = 0;
+
+      for (const row of dashboardCases) {
+        const paid = Number(row["入金金額"]) || 0;
+        const isSales = row["営業"] === name;
+        const isDeveloper = row["開発"] === name;
+        const isSub = row["サブ"] === name;
+        const salesRate = isSales
+          ? rewardRate(row, "営業報酬率", defaultRewardRate(row, "sales", name))
+          : 0;
+        const devRate = isDeveloper
+          ? rewardRate(row, "開発報酬率", defaultRewardRate(row, "developer", name))
+          : 0;
+        const subRate = isSub
+          ? rewardRate(row, "サブ報酬率", defaultRewardRate(row, "sub", name))
+          : 0;
+
+        if (isSales || isDeveloper || isSub) {
+          if (row["申込状況"] === "済") appCount += 1;
+          if (row["入金状況"] === "済") payCount += 1;
+        }
+
+        if (isSales) {
+          app += staffApplicationReward(row, name);
+          pay += paid * salesRate;
+        }
+        if (isDeveloper) {
+          if (!isSales) app += staffApplicationReward(row, name);
+          pay += paid * devRate;
+          dev += 1;
+        }
+        if (isSub) {
+          if (!isSales && !isDeveloper) app += staffApplicationReward(row, name);
+          pay += paid * subRate;
+          sub += 1;
+        }
+      }
+      return [name, appCount, app, payCount, pay, dev, sub];
+    });
+
+    return [
+      ...rows,
+      [
+        "合計",
+        rows.reduce((sum, row) => sum + Number(row[1] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[2] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[3] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[4] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[5] || 0), 0),
+        rows.reduce((sum, row) => sum + Number(row[6] || 0), 0),
+      ],
+    ];
+  }, [dashboardCases]);
 
   const rewardDetailRows = useMemo(() => {
     const rows = cases
@@ -1395,38 +1477,100 @@ export default function Home() {
       </nav>
 
       {view === "dashboard" && (
-        <section>
-          <div className="kpis">
-            <Kpi label="全案件数" value={kpi.total} />
-            <Kpi label="アポ件数" value={kpi.appointments} />
-            <Kpi label="申込件数" value={kpi.applications} />
-            <Kpi label="入金件数" value={kpi.payments} />
-            <Kpi label="申込総額" value={yen(kpi.contract)} />
-            <Kpi label="入金総額" value={yen(kpi.paid)} />
-          </div>
-          <div className="summary-grid">
-            <Panel title="月次進捗">
-              <SimpleTable
-                compact
-                headers={["月", "申込件数", "入金件数", "申込金額", "入金金額", "未入金"]}
-                rows={monthlyRows}
-              />
-            </Panel>
-            <Panel title="担当者別">
-              <SimpleTable
-                compact
-                headers={[
-                  "担当者",
-                  "担当申込件数",
-                  "担当申込金額",
-                  "担当入金件数",
-                  "担当入金金額",
-                  "開発件数",
-                  "サブ件数",
-                ]}
-                rows={peopleRows}
-              />
-            </Panel>
+        <section className="dashboard-layout">
+          <aside className="input-menu" aria-label="入力メニュー">
+            <div>
+              <span className="menu-eyebrow">入力メニュー</span>
+              <h2>システム管理トップ</h2>
+              <p>日々の入力、確認、出力をここから開始できます。</p>
+            </div>
+            <button
+              onClick={() => {
+                setView("cases");
+                setShowCaseForm(true);
+                setMessage("");
+                setCaseQuoteMessage("");
+              }}
+              type="button"
+            >
+              新規案件入力
+            </button>
+            <button onClick={() => setView("cases")} type="button">
+              案件一覧を確認
+            </button>
+            <button onClick={() => setView("process")} type="button">
+              工程・納期管理
+            </button>
+            <button onClick={() => setView("monthly")} type="button">
+              月次実績を見る
+            </button>
+            <button onClick={() => setView("people")} type="button">
+              担当者別実績
+            </button>
+            <button onClick={() => void saveCsvFiles()} type="button" disabled={isCsvSaving}>
+              {isCsvSaving ? "CSV保存中" : "帳票CSVを出力"}
+            </button>
+            <a className="button secondary menu-link" href={sheetUrl} rel="noreferrer" target="_blank">
+              保存先を開く
+            </a>
+          </aside>
+
+          <div className="dashboard-main">
+            <div className="dashboard-control">
+              <div>
+                <span className="menu-eyebrow">集計期間</span>
+                <h2>実績サマリー</h2>
+              </div>
+              <div className="period-tabs" aria-label="集計期間">
+                {([
+                  [3, "3ヶ月"],
+                  [6, "半年"],
+                  [12, "1年"],
+                ] as const).map(([months, label]) => (
+                  <button
+                    className={dashboardPeriod === months ? "active" : ""}
+                    key={months}
+                    onClick={() => setDashboardPeriod(months as DashboardPeriod)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="kpis">
+              <Kpi label="対象案件数" value={kpi.total} />
+              <Kpi label="アポ件数" value={kpi.appointments} />
+              <Kpi label="申込件数" value={kpi.applications} />
+              <Kpi label="入金件数" value={kpi.payments} />
+              <Kpi label="申込総額" value={yen(kpi.contract)} />
+              <Kpi label="入金総額" value={yen(kpi.paid)} />
+            </div>
+            <div className="summary-grid">
+              <Panel title="期間内の月次進捗">
+                <SimpleTable
+                  compact
+                  headers={["月", "申込件数", "入金件数", "申込金額", "入金金額", "未入金"]}
+                  rows={dashboardMonthlyRows}
+                />
+              </Panel>
+              <Panel title="期間内の担当者別">
+                <SimpleTable
+                  compact
+                  headers={[
+                    "担当者",
+                    "担当申込件数",
+                    "担当申込金額",
+                    "担当入金件数",
+                    "担当入金金額",
+                    "開発件数",
+                    "サブ件数",
+                  ]}
+                  rows={dashboardPeopleRows}
+                />
+              </Panel>
+            </div>
           </div>
         </section>
       )}
