@@ -330,6 +330,18 @@ section {
   padding: 12px 14px;
 }
 
+.panel-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.panel-actions .button {
+  white-space: nowrap;
+}
+
 .table-wrap {
   max-height: 68vh;
   overflow: auto;

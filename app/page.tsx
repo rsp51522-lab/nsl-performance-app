@@ -26,6 +26,7 @@ const rewardRateHeaders = ["営業報酬率", "開発報酬率", "サブ報酬�
 const caseHeaders = [...data.cases.headers, ...rewardRateHeaders];
 const sheetUrl =
   "https://docs.google.com/spreadsheets/d/1mzCoalbNbLwe8lkKmyuGBMp1NcFvJvs-ix_9_QkCaWI/edit";
+const appDevelopmentStatusUrl = "https://webapp-kohl-phi.vercel.app/";
 const defaultSteps = [
   "申込",
   "デモ作成",
@@ -1800,7 +1801,17 @@ export default function Home() {
       )}
 
       {view === "process" && (
-        <Panel action={<span className="note">会社名・納期判定をクリックすると詳細を確認できます</span>} title="会社別工程">
+        <Panel
+          action={
+            <div className="panel-actions">
+              <span className="note">会社名・納期判定をクリックすると詳細を確認できます</span>
+              <a className="button" href={appDevelopmentStatusUrl} rel="noreferrer" target="_blank">
+                アプリ開発状況
+              </a>
+            </div>
+          }
+          title="会社別工程"
+        >
           <div className="filter-bar">
             <input
               onChange={(event) => updateProcessFilter("keyword", event.target.value)}
