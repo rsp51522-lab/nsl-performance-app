@@ -1561,7 +1561,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/15 22:42 PDF会社名・ID単位対応</p>
+          <p className="version-note">最新版: 2026/08/26 16:01 担当者設定追加</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
