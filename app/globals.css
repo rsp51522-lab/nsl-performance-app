@@ -342,6 +342,17 @@ section {
   white-space: nowrap;
 }
 
+.app-status-button {
+  background: #facc15;
+  border-color: #eab308;
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.app-status-button:hover {
+  background: #eab308;
+}
+
 .table-wrap {
   max-height: 68vh;
   overflow: auto;

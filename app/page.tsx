@@ -1805,7 +1805,7 @@ export default function Home() {
           action={
             <div className="panel-actions">
               <span className="note">会社名・納期判定をクリックすると詳細を確認できます</span>
-              <a className="button" href={appDevelopmentStatusUrl} rel="noreferrer" target="_blank">
+              <a className="button app-status-button" href={appDevelopmentStatusUrl} rel="noreferrer" target="_blank">
                 アプリ開発状況
               </a>
             </div>
