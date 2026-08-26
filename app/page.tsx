@@ -27,6 +27,7 @@ const caseHeaders = [...data.cases.headers, ...rewardRateHeaders];
 const sheetUrl =
   "https://docs.google.com/spreadsheets/d/1mzCoalbNbLwe8lkKmyuGBMp1NcFvJvs-ix_9_QkCaWI/edit";
 const appDevelopmentStatusUrl = "https://webapp-kohl-phi.vercel.app/";
+const staffStorageKey = "nsl-performance-staff";
 const defaultSteps = [
   "申込",
   "デモ作成",
@@ -36,8 +37,7 @@ const defaultSteps = [
   "納期入力",
   "作業内容進捗報告",
 ];
-const staffOptions = ["", "浅野", "鹿島", "川西"];
-const exportStaff = ["浅野", "鹿島", "川西"];
+const defaultStaff = ["浅野", "鹿島", "川西"];
 const exportMonths = [6, 7, 8, 9, 10, 11, 12];
 const rateHeaders = new Set(rewardRateHeaders);
 const caseDateHeaders = new Set(["アポ日", "申込日", "入金日"]);
@@ -55,6 +55,10 @@ const moneyHeaders = new Set([
   "鹿島報酬",
   "川西報酬",
 ]);
+
+function isMoneyHeader(header: string) {
+  return moneyHeaders.has(header) || header.endsWith("報酬");
+}
 const initialForm: CaseRecord = {
   会社名: "",
   代表: "",
@@ -348,7 +352,12 @@ function detailCsvRows(rows: CaseRecord[], processItems: ProcessItem[]): CsvRow[
   ];
 }
 
-function summaryRows(title: string, rows: CaseRecord[], processItems: ProcessItem[]): CsvRow[] {
+function summaryRows(
+  title: string,
+  rows: CaseRecord[],
+  processItems: ProcessItem[],
+  staffNames: string[],
+): CsvRow[] {
   const current = new Date();
   const currentYear = current.getFullYear();
   const currentMonth = current.getMonth() + 1;
@@ -369,7 +378,7 @@ function summaryRows(title: string, rows: CaseRecord[], processItems: ProcessIte
     ["年間契約数", yearRows.filter(hasApplication).length],
     [],
     ["担当者", "個人年間売上", "年間申込数", "年間契約数"],
-    ...exportStaff.map((name) => [
+    ...staffNames.map((name) => [
       name,
       yearRows.reduce((sum, row) => sum + (assignedTo(row, name) ? staffPaidReward(row, name) : 0), 0),
       yearRows.filter((row) => assignedTo(row, name) && hasApplication(row)).length,
@@ -387,13 +396,19 @@ function summaryRows(title: string, rows: CaseRecord[], processItems: ProcessIte
   return csvRows;
 }
 
-function monthlyCsvRows(year: number, month: number, rows: CaseRecord[], processItems: ProcessItem[]): CsvRow[] {
+function monthlyCsvRows(
+  year: number,
+  month: number,
+  rows: CaseRecord[],
+  processItems: ProcessItem[],
+  staffNames: string[],
+): CsvRow[] {
   const monthRows = rows.filter((row) => rowTouchesMonth(row, year, month));
   return [
     [`${year}.${month} 実績シート`],
     [],
     ["担当者", "個人今月売上", "申込数", "契約数", "入金数"],
-    ...exportStaff.map((name) => [
+    ...staffNames.map((name) => [
       name,
       monthRows.reduce((sum, row) => sum + (assignedTo(row, name) ? staffPaidReward(row, name) : 0), 0),
       monthRows.filter((row) => assignedTo(row, name) && hasApplication(row)).length,
@@ -406,12 +421,12 @@ function monthlyCsvRows(year: number, month: number, rows: CaseRecord[], process
   ];
 }
 
-function buildCsvFiles(rows: CaseRecord[], processItems: ProcessItem[]) {
+function buildCsvFiles(rows: CaseRecord[], processItems: ProcessItem[], staffNames: string[]) {
   return [
-    { name: "NSL_全体実績.csv", rows: summaryRows("全体実績シート", rows, processItems) },
+    { name: "NSL_全体実績.csv", rows: summaryRows("全体実績シート", rows, processItems, staffNames) },
     ...exportMonths.map((month) => ({
       name: `NSL_2026.${month}実績.csv`,
-      rows: monthlyCsvRows(2026, month, rows, processItems),
+      rows: monthlyCsvRows(2026, month, rows, processItems, staffNames),
     })),
   ];
 }
@@ -427,6 +442,27 @@ function csvText(rows: CsvRow[]) {
         .join(","),
     )
     .join("\r\n");
+}
+
+function normalizeStaffList(values: unknown[]) {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const value of values) {
+    const name = String(value || "").trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    normalized.push(name);
+  }
+  return normalized;
+}
+
+function readLocalStaffSettings() {
+  try {
+    const localStaff = JSON.parse(localStorage.getItem(staffStorageKey) || "[]");
+    return Array.isArray(localStaff) ? localStaff : [];
+  } catch {
+    return [];
+  }
 }
 
 function statusFor(item: ProcessRecord) {
@@ -561,10 +597,10 @@ function SimpleTable({
           <tr className={row[0] === "合計" ? "total-row" : ""} key={rowIndex}>
             {row.map((cell, index) => (
               <td
-                className={moneyHeaders.has(headers[index]) ? "money" : ""}
+                className={isMoneyHeader(headers[index]) ? "money" : ""}
                 key={`${rowIndex}-${headers[index]}`}
               >
-                {moneyHeaders.has(headers[index]) ? yen(cell) : cell}
+                {isMoneyHeader(headers[index]) ? yen(cell) : cell}
               </td>
             ))}
           </tr>
@@ -587,6 +623,10 @@ export default function Home() {
   const [cases, setCases] = useState<CaseRecord[]>(asObjects(data.cases) as CaseRecord[]);
   const [processItems, setProcessItems] = useState<ProcessItem[]>(initialProcessItems());
   const [processSteps, setProcessSteps] = useState(defaultSteps);
+  const [configuredStaff, setConfiguredStaff] = useState<string[]>(defaultStaff);
+  const [newStaffName, setNewStaffName] = useState("");
+  const [settingsMessage, setSettingsMessage] = useState("");
+  const [isSettingsSaving, setIsSettingsSaving] = useState(false);
   const [selectedProcess, setSelectedProcess] = useState<ProcessItem | null>(null);
   const [showCaseForm, setShowCaseForm] = useState(false);
   const [form, setForm] = useState<CaseRecord>(initialForm);
@@ -629,6 +669,20 @@ export default function Home() {
         if (payload?.authenticated) setIsRewardAdmin(true);
       })
       .catch(() => undefined);
+
+    fetch("/api/settings")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (Array.isArray(payload?.staff)) {
+          setConfiguredStaff(normalizeStaffList([...defaultStaff, ...payload.staff]));
+          localStorage.setItem(staffStorageKey, JSON.stringify(payload.staff));
+          return;
+        }
+        setConfiguredStaff(normalizeStaffList([...defaultStaff, ...readLocalStaffSettings()]));
+      })
+      .catch(() => {
+        setConfiguredStaff(normalizeStaffList([...defaultStaff, ...readLocalStaffSettings()]));
+      });
   }, []);
 
   useEffect(() => {
@@ -653,6 +707,16 @@ export default function Home() {
       }));
     }
   }, []);
+
+  const staffList = useMemo(() => {
+    const assignedStaff = [
+      ...cases.flatMap((row) => [row["営業"], row["開発"], row["サブ"]]),
+      ...processItems.flatMap((row) => [row["営業"], row["開発"], row["サブ"]]),
+    ];
+    return normalizeStaffList([...defaultStaff, ...configuredStaff, ...assignedStaff]);
+  }, [cases, configuredStaff, processItems]);
+  const staffOptions = useMemo(() => ["", ...staffList], [staffList]);
+  const staffOptionsWithoutBlank = staffList;
 
   const dashboardCases = useMemo(() => {
     const today = new Date();
@@ -708,7 +772,7 @@ export default function Home() {
   }, [dashboardCases, monthlyRows]);
 
   const peopleRows = useMemo(() => {
-    const rows = ["浅野", "鹿島", "川西", "未設定"].map((name) => {
+    const rows = [...staffList, "未設定"].map((name) => {
       let appCount = 0;
       let payCount = 0;
       let app = 0;
@@ -766,10 +830,10 @@ export default function Home() {
         rows.reduce((sum, row) => sum + Number(row[6] || 0), 0),
       ],
     ];
-  }, [cases]);
+  }, [cases, staffList]);
 
   const dashboardPeopleRows = useMemo(() => {
-    const rows = ["浅野", "鹿島", "川西", "未設定"].map((name) => {
+    const rows = [...staffList, "未設定"].map((name) => {
       let appCount = 0;
       let payCount = 0;
       let app = 0;
@@ -827,7 +891,7 @@ export default function Home() {
         rows.reduce((sum, row) => sum + Number(row[6] || 0), 0),
       ],
     ];
-  }, [dashboardCases]);
+  }, [dashboardCases, staffList]);
 
   const rewardDetailRows = useMemo(() => {
     const rows = cases
@@ -839,9 +903,7 @@ export default function Home() {
         row["営業"] || "",
         row["開発"] || "",
         row["サブ"] || "",
-        staffApplicationReward(row, "浅野"),
-        staffApplicationReward(row, "鹿島"),
-        staffApplicationReward(row, "川西"),
+        ...staffList.map((name) => staffApplicationReward(row, name)),
       ]);
 
     return [
@@ -853,12 +915,12 @@ export default function Home() {
         "",
         "",
         "",
-        rows.reduce((sum, row) => sum + Number(row[6] || 0), 0),
-        rows.reduce((sum, row) => sum + Number(row[7] || 0), 0),
-        rows.reduce((sum, row) => sum + Number(row[8] || 0), 0),
+        ...staffList.map((_, index) =>
+          rows.reduce((sum, row) => sum + Number(row[6 + index] || 0), 0),
+        ),
       ],
     ];
-  }, [cases]);
+  }, [cases, staffList]);
 
   const filteredCases = cases
     .filter((row) => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()))
@@ -1389,10 +1451,64 @@ export default function Home() {
     setProcessFilter((current) => ({ ...current, [key]: value }));
   }
 
+  async function saveStaffSettings(nextStaff: string[], successMessage: string) {
+    const normalized = normalizeStaffList([...defaultStaff, ...nextStaff]);
+    setIsSettingsSaving(true);
+    setSettingsMessage("");
+    setConfiguredStaff(normalized);
+    localStorage.setItem(staffStorageKey, JSON.stringify(normalized));
+
+    try {
+      const response = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ staff: normalized }),
+      });
+      if (!response.ok) throw new Error("共有設定を保存できませんでした。");
+      setSettingsMessage(successMessage);
+    } catch {
+      setSettingsMessage("この端末に保存しました。共有設定は次回もう一度保存してください。");
+    } finally {
+      setIsSettingsSaving(false);
+    }
+  }
+
+  function addStaffMember() {
+    const name = newStaffName.trim();
+    if (!name) {
+      setSettingsMessage("追加する担当者名を入力してください。");
+      return;
+    }
+    if (staffList.includes(name)) {
+      setSettingsMessage(`${name} はすでに登録されています。`);
+      return;
+    }
+    setNewStaffName("");
+    void saveStaffSettings([...configuredStaff, name], `${name} を担当者に追加しました。`);
+  }
+
+  function removeStaffMember(name: string) {
+    if (defaultStaff.includes(name)) return;
+    const isAssigned = staffIsAssigned(name);
+    if (isAssigned) {
+      setSettingsMessage(`${name} は案件または工程で使用中のため削除できません。`);
+      return;
+    }
+    void saveStaffSettings(
+      configuredStaff.filter((staff) => staff !== name),
+      `${name} を担当者リストから削除しました。`,
+    );
+  }
+
+  function staffIsAssigned(name: string) {
+    return cases.some((row) => row["営業"] === name || row["開発"] === name || row["サブ"] === name) ||
+      processItems.some((row) => row["営業"] === name || row["開発"] === name || row["サブ"] === name);
+  }
+
   async function saveCsvFiles() {
     setIsCsvSaving(true);
     setCsvMessage("");
-    const files = buildCsvFiles(cases, processItems);
+    const files = buildCsvFiles(cases, processItems, staffList);
     const encoder = new TextEncoder();
 
     try {
@@ -1449,6 +1565,15 @@ export default function Home() {
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">
+          <button
+            aria-label="設定"
+            className="gear-button secondary"
+            onClick={() => setView("settings")}
+            title="設定"
+            type="button"
+          >
+            ⚙
+          </button>
           <button onClick={() => void saveCsvFiles()} type="button" disabled={isCsvSaving}>
             {isCsvSaving ? "CSV保存中" : "CSVで保管"}
           </button>
@@ -1611,9 +1736,9 @@ export default function Home() {
                 <Field label="アポ日" onChange={updateForm} type="date" value={form["アポ日"]} />
                 <Field label="申込日" onChange={updateForm} type="date" value={form["申込日"]} />
                 <Field label="入金日" onChange={updateForm} type="date" value={form["入金日"]} />
-                <SelectField label="営業" onChange={updateForm} options={["浅野", "鹿島", "川西", ""]} value={form["営業"]} />
-                <SelectField label="開発" onChange={updateForm} options={["鹿島", "川西", "浅野", ""]} value={form["開発"]} />
-                <SelectField label="サブ" onChange={updateForm} options={["", "鹿島", "川西", "浅野"]} value={form["サブ"]} />
+                <SelectField label="営業" onChange={updateForm} options={staffOptions} value={form["営業"]} />
+                <SelectField label="開発" onChange={updateForm} options={staffOptions} value={form["開発"]} />
+                <SelectField label="サブ" onChange={updateForm} options={staffOptions} value={form["サブ"]} />
                 <label className="case-pdf-import">
                   <span>見積書PDF読込</span>
                   <input
@@ -1753,7 +1878,7 @@ export default function Home() {
                       </td>
                       {visibleCaseHeaders.map((header) => (
                         <td
-                          className={[caseColumnClass(header), moneyHeaders.has(header) ? "money" : ""]
+                          className={[caseColumnClass(header), isMoneyHeader(header) ? "money" : ""]
                             .filter(Boolean)
                             .join(" ")}
                           key={`${rowIndex}-${header}`}
@@ -1782,7 +1907,7 @@ export default function Home() {
                               type="number"
                               value={String(row[header] ?? "")}
                             />
-                          ) : moneyHeaders.has(header) ? (
+                          ) : isMoneyHeader(header) ? (
                             yen(row[header] ?? "")
                           ) : caseDateHeaders.has(header) ? (
                             shortDate(row[header] ?? "")
@@ -1823,9 +1948,9 @@ export default function Home() {
               value={processFilter.staff}
             >
               <option value="">担当すべて</option>
-              <option value="浅野">浅野</option>
-              <option value="鹿島">鹿島</option>
-              <option value="川西">川西</option>
+              {staffOptionsWithoutBlank.map((staff) => (
+                <option key={staff} value={staff}>{staff}</option>
+              ))}
             </select>
             <select
               onChange={(event) => updateProcessFilter("status", event.target.value)}
@@ -1946,15 +2071,72 @@ export default function Home() {
                   "営業",
                   "開発",
                   "サブ",
-                  "浅野報酬",
-                  "鹿島報酬",
-                  "川西報酬",
+                  ...staffOptionsWithoutBlank.map((name) => `${name}報酬`),
                 ]}
                 rows={rewardDetailRows}
               />
             </div>
           </Panel>
         </>
+      )}
+
+      {view === "settings" && (
+        <Panel
+          action={
+            <button className="secondary" onClick={() => setView("dashboard")} type="button">
+              戻る
+            </button>
+          }
+          title="設定"
+        >
+          <div className="settings-layout">
+            <form
+              className="settings-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                addStaffMember();
+              }}
+            >
+              <label>
+                <span>担当者を追加</span>
+                <input
+                  onChange={(event) => setNewStaffName(event.target.value)}
+                  placeholder="例: 田中"
+                  value={newStaffName}
+                />
+              </label>
+              <button disabled={isSettingsSaving} type="submit">
+                {isSettingsSaving ? "保存中" : "担当者追加"}
+              </button>
+            </form>
+            {settingsMessage && <p className="message">{settingsMessage}</p>}
+            <div className="staff-list">
+              {staffList.map((name) => {
+                const isDefault = defaultStaff.includes(name);
+                const isAssigned = staffIsAssigned(name);
+                const canRemove = !isDefault && !isAssigned && configuredStaff.includes(name);
+                return (
+                  <div className="staff-list-row" key={name}>
+                    <div>
+                      <strong>{name}</strong>
+                      <span>{isDefault ? "初期担当者" : isAssigned ? "使用中" : "追加担当者"}</span>
+                    </div>
+                    {canRemove && (
+                      <button
+                        className="secondary"
+                        disabled={isSettingsSaving}
+                        onClick={() => removeStaffMember(name)}
+                        type="button"
+                      >
+                        削除
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Panel>
       )}
 
       {editingCase && (
@@ -1992,9 +2174,9 @@ export default function Home() {
               <Field label="アポ日" onChange={updateEditingCase} type="date" value={editingCase["アポ日"]} />
               <Field label="申込日" onChange={updateEditingCase} type="date" value={editingCase["申込日"]} />
               <Field label="入金日" onChange={updateEditingCase} type="date" value={editingCase["入金日"]} />
-              <SelectField label="営業" onChange={updateEditingCase} options={["浅野", "鹿島", "川西", ""]} value={editingCase["営業"]} />
-              <SelectField label="開発" onChange={updateEditingCase} options={["鹿島", "川西", "浅野", ""]} value={editingCase["開発"]} />
-              <SelectField label="サブ" onChange={updateEditingCase} options={["", "鹿島", "川西", "浅野"]} value={editingCase["サブ"]} />
+              <SelectField label="営業" onChange={updateEditingCase} options={staffOptions} value={editingCase["営業"]} />
+              <SelectField label="開発" onChange={updateEditingCase} options={staffOptions} value={editingCase["開発"]} />
+              <SelectField label="サブ" onChange={updateEditingCase} options={staffOptions} value={editingCase["サブ"]} />
               {isRewardAdmin && (
                 <>
                   <Field label="営業報酬率" onChange={updateEditingCase} type="number" value={editingCase["営業報酬率"]} />

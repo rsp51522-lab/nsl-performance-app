@@ -79,6 +79,16 @@ header p {
   justify-content: flex-end;
 }
 
+.gear-button {
+  align-items: center;
+  display: inline-flex;
+  font-size: 19px;
+  height: 42px;
+  justify-content: center;
+  padding: 0;
+  width: 42px;
+}
+
 .version-note {
   color: #a7f3d0;
   font-size: 12px;
@@ -351,6 +361,54 @@ section {
 
 .app-status-button:hover {
   background: #eab308;
+}
+
+.settings-layout {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.settings-form {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.staff-list {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.staff-list-row {
+  align-items: center;
+  background: var(--white);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.staff-list-row:last-child {
+  border-bottom: 0;
+}
+
+.staff-list-row div {
+  display: grid;
+  gap: 2px;
+}
+
+.staff-list-row span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .table-wrap {
@@ -915,6 +973,17 @@ td.money {
 
   .modal-head-actions {
     justify-content: flex-start;
+    width: 100%;
+  }
+
+  .settings-form,
+  .staff-list-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-form label,
+  .settings-form input {
     width: 100%;
   }
 
