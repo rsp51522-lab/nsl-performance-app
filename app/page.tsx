@@ -9,7 +9,7 @@ type SheetData = { headers: string[]; rows: Row[] };
 type AppData = { cases: SheetData; process: SheetData; settings: Row[] };
 type CaseRecord = Record<string, string | number>;
 type ProcessRecord = Record<string, string | number | boolean | string[]>;
-type ProcessItem = ProcessRecord & { id?: number };
+type ProcessItem = ProcessRecord & { id?: number; __groupIds?: number[] };
 type CsvRow = (string | number)[];
 type CsvFile = { name: string; rows: CsvRow[] };
 type DashboardPeriod = 3 | 6 | 12;
@@ -19,6 +19,26 @@ type QuoteItem = {
   quantity: string;
   priceEx: number;
   amountEx: number;
+};
+type QuoteLinkPayload = {
+  company?: string;
+  representative?: string;
+  name?: string;
+  appointmentDate?: string;
+  applicationDate?: string;
+  sales?: string;
+  developer?: string;
+  sub?: string;
+  items?: Array<{
+    name?: string;
+    unit?: string;
+    quantity?: string | number;
+    qty?: string | number;
+    priceEx?: string | number;
+    unitEx?: string | number;
+    amountEx?: string | number;
+    subtotalEx?: string | number;
+  }>;
 };
 
 const data = seed as AppData;
@@ -207,6 +227,55 @@ function applyQuoteItemToRecord(record: CaseRecord, item: QuoteItem) {
   };
 }
 
+function decodeBase64UrlJson(value: string) {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  const bytes = Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function readQuoteLinkPayload(params: URLSearchParams): QuoteLinkPayload {
+  const raw = params.get("quote") || params.get("quotePayload") || "";
+  if (!raw) return {};
+  try {
+    const parsed = decodeBase64UrlJson(raw);
+    return parsed && typeof parsed === "object" ? (parsed as QuoteLinkPayload) : {};
+  } catch {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? (parsed as QuoteLinkPayload) : {};
+    } catch {
+      return {};
+    }
+  }
+}
+
+function firstParam(params: URLSearchParams, keys: string[]) {
+  for (const key of keys) {
+    const value = params.get(key)?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function normalizeQuoteItems(items: QuoteLinkPayload["items"]) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => {
+      const quantity = String(item.quantity ?? item.qty ?? "").trim();
+      const priceEx = Number(item.priceEx ?? item.unitEx ?? 0) || 0;
+      const amountEx = Number(item.amountEx ?? item.subtotalEx ?? 0) || 0;
+      return {
+        name: String(item.name || "").trim(),
+        unit: String(item.unit || "").trim(),
+        quantity,
+        priceEx,
+        amountEx,
+      };
+    })
+    .filter((item) => item.name && Number(item.quantity) > 0 && item.priceEx > 0);
+}
+
 function normalizeCompanyName(value: string | number | boolean | string[] | undefined) {
   return String(value || "")
     .normalize("NFKC")
@@ -245,6 +314,16 @@ function mergeDate(current: unknown, next: unknown, direction: "min" | "max") {
 
 function mergeCompanyProcess(base: ProcessItem, next: ProcessRecord) {
   const merged: ProcessItem = { ...base };
+  const ids = new Set<number>([
+    ...(Array.isArray(base.__groupIds) ? base.__groupIds : []),
+    ...(base.id ? [Number(base.id)] : []),
+    ...(Array.isArray((next as ProcessItem).__groupIds) ? ((next as ProcessItem).__groupIds as number[]) : []),
+    ...((next as ProcessItem).id ? [Number((next as ProcessItem).id)] : []),
+  ].filter(Boolean));
+  if (ids.size) {
+    merged.__groupIds = [...ids];
+    merged.id = merged.id || merged.__groupIds[0];
+  }
   merged["NO"] = joinUnique(merged["NO"], next["NO"], ", ", /[,、]+/);
   merged["作業内容"] = joinUnique(merged["作業内容"], next["作業内容"], " / ", /[/／]+/);
   merged["作業時間"] = (Number(merged["作業時間"]) || 0) + (Number(next["作業時間"]) || 0) || "";
@@ -687,12 +766,53 @@ export default function Home() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const company = params.get("company")?.trim() ?? "";
-    const representative = params.get("representative")?.trim() ?? "";
+    const quotePayload = readQuoteLinkPayload(params);
+    const directService = firstParam(params, ["service", "サービス"]);
+    const directQuantity = firstParam(params, ["quantity", "qty", "個数"]);
+    const directPriceEx = firstParam(params, ["priceEx", "unitEx", "税抜単価"]);
+    const directAmountEx = firstParam(params, ["amountEx", "subtotalEx", "税抜金額"]);
+    const payloadItems = normalizeQuoteItems(quotePayload.items);
+    const quoteItems = payloadItems.length
+      ? payloadItems
+      : normalizeQuoteItems([
+          {
+            name: directService,
+            quantity: directQuantity || "1",
+            priceEx: directPriceEx,
+            amountEx: directAmountEx,
+          },
+        ]);
+    const company =
+      firstParam(params, ["company", "会社名"]) ||
+      String(quotePayload.company || "").trim();
+    const representative =
+      firstParam(params, ["representative", "name", "代表", "担当名"]) ||
+      String(quotePayload.representative || quotePayload.name || "").trim();
+    const appointmentDate =
+      firstParam(params, ["appointmentDate", "apoDate", "アポ日"]) ||
+      String(quotePayload.appointmentDate || "").trim();
+    const applicationDate =
+      firstParam(params, ["applicationDate", "申込日"]) ||
+      String(quotePayload.applicationDate || "").trim();
+    const sales =
+      firstParam(params, ["sales", "staff", "営業"]) ||
+      String(quotePayload.sales || "").trim();
+    const developer =
+      firstParam(params, ["developer", "開発"]) ||
+      String(quotePayload.developer || "").trim();
+    const sub =
+      firstParam(params, ["sub", "サブ"]) ||
+      String(quotePayload.sub || "").trim();
     const shouldOpenCaseForm =
       params.get("action") === "new" ||
       Boolean(company) ||
-      Boolean(representative);
+      Boolean(representative) ||
+      Boolean(appointmentDate) ||
+      Boolean(applicationDate) ||
+      Boolean(sales) ||
+      Boolean(developer) ||
+      Boolean(sub) ||
+      quoteItems.length > 0;
 
     if (params.get("tab") === "cases" || shouldOpenCaseForm) {
       setView("cases");
@@ -700,11 +820,26 @@ export default function Home() {
 
     if (shouldOpenCaseForm) {
       setShowCaseForm(true);
-      setForm((current) => ({
-        ...current,
-        会社名: company || current["会社名"],
-        代表: representative || current["代表"],
-      }));
+      if (quoteItems.length > 0) {
+        setCaseQuoteItems(quoteItems);
+        setCaseQuoteFileName("見積書アプリ連携");
+        setCaseQuoteMessage(
+          `見積書アプリから${quoteItems.length}項目を読み込みました。1項目目は入力欄へ反映済みです。`,
+        );
+      }
+      setForm((current) => {
+        const base = {
+          ...current,
+          会社名: company || current["会社名"],
+          代表: representative || current["代表"],
+          アポ日: appointmentDate || current["アポ日"],
+          申込日: applicationDate || current["申込日"],
+          営業: sales || current["営業"],
+          開発: developer || current["開発"],
+          サブ: sub || current["サブ"],
+        };
+        return quoteItems.length ? applyQuoteItemToRecord(base, quoteItems[0]) : base;
+      });
     }
   }, []);
 
@@ -969,9 +1104,10 @@ export default function Home() {
       if (rawNos.length > 0 && validNos.length === 0 && !currentCompanies.has(companyKey)) {
         continue;
       }
-      const cleanRow = {
+      const cleanRow: ProcessItem = {
         ...row,
         NO: rawNos.length > 0 ? validNos.join(", ") : row["NO"],
+        __groupIds: row.id ? [Number(row.id)] : [],
       };
       const current = groups.get(companyKey);
       groups.set(companyKey, current ? mergeCompanyProcess(current, cleanRow) : { ...cleanRow });
@@ -1378,17 +1514,35 @@ export default function Home() {
     setIsProcessSaving(true);
     setProcessMessage("");
     try {
+      const ids = Array.isArray(selectedProcess.__groupIds)
+        ? selectedProcess.__groupIds.map((id) => Number(id)).filter(Boolean)
+        : [Number(selectedProcess.id)].filter(Boolean);
       const response = await fetch("/api/process", {
-        method: "PUT",
+        method: ids.length ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ item: selectedProcess }),
+        body: JSON.stringify(ids.length ? { item: selectedProcess, ids } : { item: selectedProcess }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "保存できませんでした。");
+      const savedItems: ProcessItem[] = Array.isArray(result.items)
+        ? result.items
+        : result.item
+          ? [result.item]
+          : [];
+      const savedById = new Map(savedItems.map((item) => [Number(item.id), item]));
       setProcessItems((current) =>
-        current.map((item) => (item.id === result.item.id ? result.item : item)),
+        [
+          ...current.map((item) => savedById.get(Number(item.id)) || item),
+          ...savedItems.filter(
+            (saved) => !current.some((item) => Number(item.id) === Number(saved.id)),
+          ),
+        ],
       );
-      setSelectedProcess(result.item);
+      setSelectedProcess(
+        savedItems.length > 1
+          ? savedItems.slice(1).reduce((current, item) => mergeCompanyProcess(current, item), savedItems[0])
+          : savedItems[0] || selectedProcess,
+      );
       setProcessMessage("工程を保存しました。");
     } catch (error) {
       setProcessMessage(error instanceof Error ? error.message : "保存できませんでした。");
@@ -1561,7 +1715,7 @@ export default function Home() {
         <div>
           <h1>NSL実績管理アプリ</h1>
           <p>案件追加、売上、担当者別実績、会社別工程を確認できます。</p>
-          <p className="version-note">最新版: 2026/08/26 16:01 担当者設定追加</p>
+          <p className="version-note">最新版: 2026/08/28 10:58 工程保存更新修正</p>
           {csvMessage && <p className="version-note">{csvMessage}</p>}
         </div>
         <div className="header-actions">

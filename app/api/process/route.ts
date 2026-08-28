@@ -3,6 +3,7 @@ import seed from "../../seed-data.json";
 
 type Row = (string | number)[];
 type ProcessRecord = Record<string, string | number | boolean | string[]>;
+type ProcessItemPayload = ProcessRecord & { id?: number; __groupIds?: number[] };
 
 const processHeaders = seed.process.headers as string[];
 const seedRows = seed.process.rows as Row[];
@@ -52,13 +53,23 @@ function statusFor(item: ProcessRecord) {
   return "予定内";
 }
 
+function stripInternalFields(item: ProcessRecord): ProcessRecord {
+  const next = { ...item };
+  delete (next as ProcessItemPayload).id;
+  for (const key of Object.keys(next)) {
+    if (key.startsWith("__")) delete next[key];
+  }
+  return next;
+}
+
 function normalize(item: ProcessRecord): ProcessRecord {
-  const hours = Number(item["作業時間"]) || 0;
+  const cleanItem = stripInternalFields(item);
+  const hours = Number(cleanItem["作業時間"]) || 0;
   const next = {
-    ...item,
+    ...cleanItem,
     作業日数: hours ? Math.ceil(hours / 8) : "",
-    完了: item["完了"] === true || item["作業状況"] === "完了",
-    作業状況: item["完了"] === true || item["作業状況"] === "完了" ? "完了" : "作成中",
+    完了: cleanItem["完了"] === true || cleanItem["作業状況"] === "完了",
+    作業状況: cleanItem["完了"] === true || cleanItem["作業状況"] === "完了" ? "完了" : "作成中",
   };
   next["納期判定"] = statusFor(next);
   if (!Array.isArray(next["進捗工程"])) {
@@ -106,20 +117,45 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    const payload = (await request.json()) as { item?: ProcessRecord & { id?: number } };
+    const payload = (await request.json()) as { item?: ProcessItemPayload; id?: number; ids?: number[] };
     const item = normalize(payload.item || {});
-    const id = Number(payload.item?.id);
-    if (!id) return Response.json({ error: "id is required" }, { status: 400 });
+    const ids = Array.isArray(payload.ids)
+      ? payload.ids.map((id) => Number(id)).filter(Boolean)
+      : [Number(payload.id ?? payload.item?.id)].filter(Boolean);
+    if (!ids.length) return Response.json({ error: "id is required" }, { status: 400 });
 
-    await env.DB.prepare(
-      "UPDATE process_items SET company = ?, data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-    )
-      .bind(String(item["会社名"] || ""), JSON.stringify(item), id)
-      .run();
+    await env.DB.batch(
+      ids.map((id) =>
+        env.DB.prepare(
+          "UPDATE process_items SET company = ?, data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        ).bind(String(item["会社名"] || ""), JSON.stringify(item), id),
+      ),
+    );
 
-    return Response.json({ item: { id, ...item } });
+    const items = ids.map((id) => ({ id, ...item }));
+    return Response.json({ item: items[0], items });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update process item";
+    return Response.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const payload = (await request.json()) as { item?: ProcessItemPayload };
+    const item = normalize(payload.item || {});
+    if (!item["会社名"]) return Response.json({ error: "company is required" }, { status: 400 });
+
+    const result = await env.DB.prepare(
+      "INSERT INTO process_items (company, data) VALUES (?, ?) RETURNING id",
+    )
+      .bind(String(item["会社名"] || ""), JSON.stringify(item))
+      .first<{ id: number }>();
+
+    const saved = { id: result?.id, ...item };
+    return Response.json({ item: saved, items: [saved] }, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to create process item";
     return Response.json({ error: message }, { status: 500 });
   }
 }
