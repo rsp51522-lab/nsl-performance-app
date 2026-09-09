@@ -53,9 +53,12 @@ const defaultSteps = [
   "デモ作成",
   "見積作成",
   "見積内容で進捗工程決定",
-  "作成開始入力",
+  "制作開始",
   "納期入力",
   "作業内容進捗報告",
+  "契約書作成",
+  "請求書発送",
+  "入金",
 ];
 const defaultStaff = ["浅野", "鹿島", "川西"];
 const exportMonths = [6, 7, 8, 9, 10, 11, 12];
@@ -325,6 +328,11 @@ function mergeCompanyProcess(base: ProcessItem, next: ProcessRecord) {
     merged.id = merged.id || merged.__groupIds[0];
   }
   merged["NO"] = joinUnique(merged["NO"], next["NO"], ", ", /[,、]+/);
+  const mergedSteps = [
+    ...(Array.isArray(merged["進捗工程"]) ? (merged["進捗工程"] as string[]) : []),
+    ...(Array.isArray(next["進捗工程"]) ? (next["進捗工程"] as string[]) : []),
+  ].map((step) => step === "制作開始" ? "制作開始" : step);
+  merged["進捗工程"] = [...new Set(mergedSteps)];
   merged["作業内容"] = joinUnique(merged["作業内容"], next["作業内容"], " / ", /[/／]+/);
   merged["作業時間"] = (Number(merged["作業時間"]) || 0) + (Number(next["作業時間"]) || 0) || "";
   merged["作業日数"] = calcDays(merged["作業時間"]);
@@ -634,8 +642,9 @@ function initialProcessItems() {
     const steps = [
       row["初回申込"] ? "申込" : "",
       row["作業内容"] ? "見積内容で進捗工程決定" : "",
-      row["作業開始"] ? "作成開始入力" : "",
+      row["作業開始"] ? "制作開始" : "",
       row["最終納品予定"] ? "納期入力" : "",
+      row["入金状況"] === "済" || row["入金日"] ? "入金" : "",
     ].filter(Boolean);
     const item = {
       id: index + 1,
@@ -647,6 +656,11 @@ function initialProcessItems() {
       進捗工程: steps,
       見積PDF名: "",
       見積読込内容: "",
+      デモURL: "",
+      契約書PDF名: "",
+      契約書読込内容: "",
+      請求書PDF名: "",
+      請求書読込内容: "",
       作業内容進捗報告: "",
     };
     return { ...item, 納期判定: statusFor(item) };
@@ -1128,7 +1142,10 @@ export default function Home() {
         サブ: row["サブ"] || "",
         作業開始: "",
         最終納品予定: "",
-        進捗工程: row["申込状況"] === "済" ? ["申込"] : [],
+        進捗工程: [
+          row["申込状況"] === "済" ? "申込" : "",
+          row["入金状況"] === "済" || row["入金日"] ? "入金" : "",
+        ].filter(Boolean),
         納期判定: "未設定",
       };
       const current = groups.get(companyKey);
@@ -1318,6 +1335,16 @@ export default function Home() {
   function updateSelectedPatch(patch: Partial<ProcessItem>) {
     if (!selectedProcess) return;
     const next = { ...selectedProcess, ...patch };
+    const currentSteps = Array.isArray(next["進捗工程"]) ? (next["進捗工程"] as string[]).map((step) => step === "制作開始" ? "制作開始" : step) : [];
+    const steps = new Set(currentSteps);
+    if (String(next["デモURL"] || "").trim()) { steps.add("デモ作成"); steps.add("見積作成"); }
+    if (String(next["見積PDF名"] || "").trim() || String(next["見積読込内容"] || "").trim()) { steps.add("見積作成"); steps.add("見積内容で進捗工程決定"); }
+    if (String(next["作業開始"] || "").trim()) steps.add("制作開始");
+    if (String(next["最終納品予定"] || "").trim()) steps.add("納期入力");
+    if (String(next["契約書PDF名"] || "").trim() || String(next["契約書読込内容"] || "").trim()) steps.add("契約書作成");
+    if (String(next["請求書PDF名"] || "").trim() || String(next["請求書読込内容"] || "").trim()) steps.add("請求書発送");
+    if (next["入金状況"] === "済" || next["入金日"]) { steps.add("入金"); next["完了"] = true; }
+    next["進捗工程"] = [...steps];
     next["作業日数"] = calcDays(next["作業時間"]);
     next["作業状況"] = next["完了"] === true ? "完了" : "作成中";
     next["納期判定"] = statusFor(next);
@@ -1355,6 +1382,11 @@ export default function Home() {
         見積読込内容: text,
         ...(content ? { 作業内容: content } : {}),
         ...(hours ? { 作業時間: String(hours) } : {}),
+        進捗工程: [
+          ...(Array.isArray(selectedProcess?.["進捗工程"]) ? (selectedProcess?.["進捗工程"] as string[]) : []),
+          "見積作成",
+          "見積内容で進捗工程決定",
+        ],
       });
       setProcessMessage(
         extracted
@@ -1372,6 +1404,28 @@ export default function Home() {
           : "PDF読込エラーが発生しました。",
       );
     }
+  }
+
+  async function readSupportingPdf(file: File, kind: "contract" | "invoice") {
+    setProcessMessage("PDFを読み込んでいます。");
+    try {
+      const extracted = await readPdfText(file);
+      const nameKey = kind === "contract" ? "契約書PDF名" : "請求書PDF名";
+      const textKey = kind === "contract" ? "契約書読込内容" : "請求書読込内容";
+      updateSelectedPatch({ [nameKey]: file.name, [textKey]: extracted || `PDFを添付しました: ${file.name}`, 進捗工程: [...(Array.isArray(selectedProcess?.["進捗工程"]) ? (selectedProcess?.["進捗工程"] as string[]) : []), kind === "contract" ? "契約書作成" : "請求書発送"] });
+      setProcessMessage(kind === "contract" ? "契約書PDFを読み込みました。" : "請求書PDFを読み込みました。");
+    } catch (error) {
+      const nameKey = kind === "contract" ? "契約書PDF名" : "請求書PDF名";
+      const textKey = kind === "contract" ? "契約書読込内容" : "請求書読込内容";
+      updateSelectedPatch({ [nameKey]: file.name, [textKey]: `PDFを添付しました: ${file.name}\\n文字抽出できない形式です。` });
+      setProcessMessage(error instanceof Error ? `PDF読込エラー: ${error.message}` : "PDF読込エラーが発生しました。");
+    }
+  }
+
+  function openProcessWithStep(row: ProcessItem, step: string) {
+    const current = Array.isArray(row["進捗工程"]) ? (row["進捗工程"] as string[]) : [];
+    setSelectedProcess({ ...row, 進捗工程: [...new Set([...current, step])] });
+    setProcessMessage(`${step}を進捗工程に追加しました。保存してください。`);
   }
 
   async function addCase(event: FormEvent<HTMLFormElement>) {
@@ -2141,6 +2195,8 @@ export default function Home() {
                     </th>
                   ))}
                   <th className="work-status-col">作業状況</th>
+                  <th className="action-col">契約書制作</th>
+                  <th className="action-col">請求書発送</th>
                 </tr>
               </thead>
               <tbody>
@@ -2179,6 +2235,8 @@ export default function Home() {
                         );
                       })}
                       <td className="work-status-col">{String(row["作業状況"] || "")}</td>
+                      <td className="action-col"><button className="small-action" onClick={() => openProcessWithStep(row, "契約書作成")} type="button">契約書制作</button></td>
+                      <td className="action-col"><button className="small-action" onClick={() => openProcessWithStep(row, "請求書発送")} type="button">請求書発送</button></td>
                     </tr>
                   );
                 })}
@@ -2491,6 +2549,11 @@ export default function Home() {
               </label>
 
               <label className="wide">
+                <span>デモ作成（URL）</span>
+                <input onChange={(event) => updateSelected("デモURL", event.target.value)} placeholder="デモURLを貼り付け" type="url" value={String(selectedProcess["デモURL"] || "")} />
+              </label>
+
+              <label className="wide">
                 <span>見積PDF読込</span>
                 <input
                   accept="application/pdf"
@@ -2523,6 +2586,19 @@ export default function Home() {
                   value={String(selectedProcess["作業内容進捗報告"] || "")}
                 />
               </label>
+
+              <label className="wide">
+                <span>契約書PDF読込</span>
+                <input accept="application/pdf" onChange={(event) => { const file = event.target.files?.[0]; if (file) void readSupportingPdf(file, "contract"); }} type="file" />
+                {selectedProcess["契約書PDF名"] && <span className="note">読込済み: {String(selectedProcess["契約書PDF名"])}</span>}
+              </label>
+              <label className="wide"><span>契約書読込内容</span><textarea onChange={(event) => updateSelected("契約書読込内容", event.target.value)} rows={3} value={String(selectedProcess["契約書読込内容"] || "")} /></label>
+              <label className="wide">
+                <span>請求書PDF読込</span>
+                <input accept="application/pdf" onChange={(event) => { const file = event.target.files?.[0]; if (file) void readSupportingPdf(file, "invoice"); }} type="file" />
+                {selectedProcess["請求書PDF名"] && <span className="note">読込済み: {String(selectedProcess["請求書PDF名"])}</span>}
+              </label>
+              <label className="wide"><span>請求書読込内容</span><textarea onChange={(event) => updateSelected("請求書読込内容", event.target.value)} rows={3} value={String(selectedProcess["請求書読込内容"] || "")} /></label>
             </div>
 
             <div className="form-actions modal-actions">
