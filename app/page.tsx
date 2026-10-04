@@ -390,6 +390,11 @@ function rowTouchesRange(row: CaseRecord, start: Date, end: Date) {
   });
 }
 
+function rowPaymentInRange(row: CaseRecord, start: Date, end: Date) {
+  const date = dateValue(row["入金日"]);
+  return hasPayment(row) && !!date && date >= start && date <= end;
+}
+
 function detailCsvRows(rows: CaseRecord[], processItems: ProcessItem[]): CsvRow[] {
   const headers = [
     "会社名",
@@ -707,6 +712,11 @@ export default function Home() {
   const [view, setView] = useState("dashboard");
   const [dashboardPeriod, setDashboardPeriod] = useState<DashboardPeriod>(3);
   const [search, setSearch] = useState("");
+  const [caseFilter, setCaseFilter] = useState({
+    applicationMonth: "",
+    paymentMonth: "",
+    paymentStatus: "",
+  });
   const [processFilter, setProcessFilter] = useState({
     keyword: "",
     staff: "",
@@ -867,23 +877,32 @@ export default function Home() {
   const staffOptions = useMemo(() => ["", ...staffList], [staffList]);
   const staffOptionsWithoutBlank = staffList;
 
-  const dashboardCases = useMemo(() => {
+  const dashboardRange = useMemo(() => {
     const today = new Date();
-    const start = new Date(today.getFullYear(), today.getMonth() - dashboardPeriod + 1, 1);
-    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
-    return cases.filter((row) => rowTouchesRange(row, start, end));
-  }, [cases, dashboardPeriod]);
+    return {
+      start: new Date(today.getFullYear(), today.getMonth() - dashboardPeriod + 1, 1),
+      end: new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999),
+    };
+  }, [dashboardPeriod]);
+
+  const dashboardCases = useMemo(() => {
+    return cases.filter((row) => rowTouchesRange(row, dashboardRange.start, dashboardRange.end));
+  }, [cases, dashboardRange]);
+
+  const dashboardPaymentCases = useMemo(() => {
+    return cases.filter((row) => rowPaymentInRange(row, dashboardRange.start, dashboardRange.end));
+  }, [cases, dashboardRange]);
 
   const kpi = useMemo(
     () => ({
       total: dashboardCases.filter((row) => row["会社名"] || row["代表"]).length,
       appointments: dashboardCases.filter((row) => row["アポ日"]).length,
       applications: dashboardCases.filter((row) => row["申込状況"] === "済").length,
-      payments: dashboardCases.filter((row) => row["入金状況"] === "済").length,
+      payments: dashboardPaymentCases.length,
       contract: dashboardCases.reduce((sum, row) => sum + (Number(row["申込金額"]) || 0), 0),
-      paid: dashboardCases.reduce((sum, row) => sum + (Number(row["入金金額"]) || 0), 0),
+      paid: dashboardPaymentCases.reduce((sum, row) => sum + (Number(row["入金金額"]) || 0), 0),
     }),
-    [dashboardCases],
+    [dashboardCases, dashboardPaymentCases],
   );
 
   const monthlyRows = useMemo(() => {
@@ -892,16 +911,26 @@ export default function Home() {
       { month: string; count: number; paidCount: number; contract: number; paid: number }
     >();
     for (const row of cases) {
-      const month = monthKey(row["申込日"]);
-      if (!month) continue;
-      if (!rows.has(month)) {
-        rows.set(month, { month, count: 0, paidCount: 0, contract: 0, paid: 0 });
+      const applicationMonth = monthKey(row["申込日"]);
+      const paymentMonth = monthKey(row["入金日"]);
+
+      if (applicationMonth) {
+        if (!rows.has(applicationMonth)) {
+          rows.set(applicationMonth, { month: applicationMonth, count: 0, paidCount: 0, contract: 0, paid: 0 });
+        }
+        const item = rows.get(applicationMonth)!;
+        if (row["申込状況"] === "済") item.count += 1;
+        item.contract += Number(row["申込金額"]) || 0;
       }
-      const item = rows.get(month)!;
-      if (row["申込状況"] === "済") item.count += 1;
-      if (row["入金状況"] === "済") item.paidCount += 1;
-      item.contract += Number(row["申込金額"]) || 0;
-      item.paid += Number(row["入金金額"]) || 0;
+
+      if (paymentMonth) {
+        if (!rows.has(paymentMonth)) {
+          rows.set(paymentMonth, { month: paymentMonth, count: 0, paidCount: 0, contract: 0, paid: 0 });
+        }
+        const item = rows.get(paymentMonth)!;
+        if (hasPayment(row)) item.paidCount += 1;
+        item.paid += Number(row["入金金額"]) || 0;
+      }
     }
     return [...rows.values()]
       .sort((a, b) => a.month.localeCompare(b.month))
@@ -916,7 +945,9 @@ export default function Home() {
   }, [cases]);
 
   const dashboardMonthlyRows = useMemo(() => {
-    const allowedMonths = new Set(dashboardCases.map((row) => monthKey(row["申込日"])).filter(Boolean));
+    const allowedMonths = new Set(
+      dashboardCases.flatMap((row) => [monthKey(row["申込日"]), monthKey(row["入金日"])]).filter(Boolean),
+    );
     return monthlyRows.filter((row) => allowedMonths.has(String(row[0])));
   }, [dashboardCases, monthlyRows]);
 
@@ -991,7 +1022,8 @@ export default function Home() {
       let sub = 0;
 
       for (const row of dashboardCases) {
-        const paid = Number(row["入金金額"]) || 0;
+        const hasPeriodPayment = rowPaymentInRange(row, dashboardRange.start, dashboardRange.end);
+        const paid = hasPeriodPayment ? Number(row["入金金額"]) || 0 : 0;
         const isSales = row["営業"] === name;
         const isDeveloper = row["開発"] === name;
         const isSub = row["サブ"] === name;
@@ -1007,7 +1039,7 @@ export default function Home() {
 
         if (isSales || isDeveloper || isSub) {
           if (row["申込状況"] === "済") appCount += 1;
-          if (row["入金状況"] === "済") payCount += 1;
+          if (hasPeriodPayment) payCount += 1;
         }
 
         if (isSales) {
@@ -1040,7 +1072,7 @@ export default function Home() {
         rows.reduce((sum, row) => sum + Number(row[6] || 0), 0),
       ],
     ];
-  }, [dashboardCases, staffList]);
+  }, [dashboardCases, dashboardRange, staffList]);
 
   const rewardDetailRows = useMemo(() => {
     const rows = cases
@@ -1071,9 +1103,32 @@ export default function Home() {
     ];
   }, [cases, staffList]);
 
-  const filteredCases = cases
-    .filter((row) => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => (Number(b["NO"]) || 0) - (Number(a["NO"]) || 0));
+  const caseMonthOptions = useMemo(() => {
+    const months = new Set<string>();
+    for (const row of cases) {
+      const applicationMonth = monthKey(row["申込日"]);
+      const paymentMonth = monthKey(row["入金日"]);
+      if (applicationMonth) months.add(applicationMonth);
+      if (paymentMonth) months.add(paymentMonth);
+    }
+    return [...months].sort((a, b) => b.localeCompare(a));
+  }, [cases]);
+  const filteredCases = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    return cases
+      .filter((row) => {
+        const matchesSearch = !keyword || JSON.stringify(row).toLowerCase().includes(keyword);
+        const matchesApplicationMonth =
+          !caseFilter.applicationMonth || monthKey(row["申込日"]) === caseFilter.applicationMonth;
+        const matchesPaymentMonth =
+          !caseFilter.paymentMonth || monthKey(row["入金日"]) === caseFilter.paymentMonth;
+        const matchesPaymentStatus =
+          !caseFilter.paymentStatus ||
+          (caseFilter.paymentStatus === "済" ? hasPayment(row) : !hasPayment(row));
+        return matchesSearch && matchesApplicationMonth && matchesPaymentMonth && matchesPaymentStatus;
+      })
+      .sort((a, b) => (Number(b["NO"]) || 0) - (Number(a["NO"]) || 0));
+  }, [caseFilter, cases, search]);
   const visibleCaseHeaders = useMemo(
     () => (isRewardAdmin ? caseHeaders : caseHeaders.filter((header) => !rateHeaders.has(header))),
     [isRewardAdmin],
@@ -2052,11 +2107,49 @@ export default function Home() {
 
           <Panel
             action={
-              <input
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="会社名・代表・サービスで検索"
-                value={search}
-              />
+              <div className="filter-bar case-filter-bar">
+                <input
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="会社名・代表・サービスで検索"
+                  value={search}
+                />
+                <select
+                  onChange={(event) =>
+                    setCaseFilter((current) => ({ ...current, applicationMonth: event.target.value }))
+                  }
+                  value={caseFilter.applicationMonth}
+                >
+                  <option value="">申込月すべて</option>
+                  {caseMonthOptions.map((month) => (
+                    <option key={`application-${month}`} value={month}>
+                      {month}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  onChange={(event) =>
+                    setCaseFilter((current) => ({ ...current, paymentMonth: event.target.value }))
+                  }
+                  value={caseFilter.paymentMonth}
+                >
+                  <option value="">入金月すべて</option>
+                  {caseMonthOptions.map((month) => (
+                    <option key={`payment-${month}`} value={month}>
+                      {month}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  onChange={(event) =>
+                    setCaseFilter((current) => ({ ...current, paymentStatus: event.target.value }))
+                  }
+                  value={caseFilter.paymentStatus}
+                >
+                  <option value="">入金状況すべて</option>
+                  <option value="済">入金済</option>
+                  <option value="未">未入金</option>
+                </select>
+              </div>
             }
             title="案件"
           >

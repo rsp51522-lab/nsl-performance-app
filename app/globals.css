@@ -335,6 +335,7 @@ section {
   align-items: center;
   border-bottom: 1px solid var(--line);
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   justify-content: space-between;
   padding: 12px 14px;
@@ -473,6 +474,20 @@ section {
 .filter-bar input,
 .filter-bar select {
   min-width: 180px;
+}
+
+.case-filter-bar {
+  border-bottom: 0;
+  justify-content: flex-end;
+  padding: 0;
+}
+
+.case-filter-bar input {
+  min-width: 240px;
+}
+
+.case-filter-bar select {
+  min-width: 150px;
 }
 
 .case-form {
