@@ -419,6 +419,10 @@ section {
 
 .case-table-wrap {
   -webkit-overflow-scrolling: touch;
+  max-height: min(68vh, max(180px, calc(100dvh - 380px)));
+  overflow-x: auto;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 
 .sticky-staff-table {
